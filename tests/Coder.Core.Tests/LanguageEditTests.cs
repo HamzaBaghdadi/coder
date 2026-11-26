@@ -81,15 +81,15 @@ public sealed class LanguageEditTests
         var uri = DocumentUri.FromPath(Path.GetFullPath("a.go"));
         var newUri = DocumentUri.FromPath(Path.GetFullPath("new.go"));
         var renamedUri = DocumentUri.FromPath(Path.GetFullPath("b.go"));
-        var changes = JsonDocument.Parse($$$"""{"changes":{"{{{uri}}}":[{"range":{"start":{"line":1,"character":2},"end":{"line":1,"character":8}},"newText":"compute"}]}}""").RootElement;
-        var documentChanges = JsonDocument.Parse($$$"""
+        var changes = JsonElement.Parse($$$"""{"changes":{"{{{uri}}}":[{"range":{"start":{"line":1,"character":2},"end":{"line":1,"character":8}},"newText":"compute"}]}}""");
+        var documentChanges = JsonElement.Parse($$$"""
             {"documentChanges":[
               {"textDocument":{"uri":"{{{uri}}}","version":3},"edits":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"newText":"x"}]},
               {"kind":"create","uri":"{{{newUri}}}","options":{"ignoreIfExists":true}},
               {"kind":"rename","oldUri":"{{{uri}}}","newUri":"{{{renamedUri}}}","options":{"overwrite":true}},
               {"kind":"delete","uri":"{{{newUri}}}","options":{"recursive":true}},
               {"kind":"unknown"}]}
-            """).RootElement;
+            """);
 
         var first = LspJson.ReadWorkspaceEdit(changes)!;
         var second = LspJson.ReadWorkspaceEdit(documentChanges)!;
@@ -108,11 +108,11 @@ public sealed class LanguageEditTests
     [Fact]
     public void Parses_signature_help_with_text_and_offset_parameter_labels()
     {
-        var result = JsonDocument.Parse("""
+        var result = JsonElement.Parse("""
             {"activeSignature":0,"activeParameter":1,"signatures":[
               {"label":"Printf(format string, a ...any)","documentation":{"kind":"markdown","value":"Printf formats."},
                "parameters":[{"label":"format string"},{"label":[22,30]}]}]}
-            """).RootElement;
+            """);
 
         var help = LspJson.ReadSignatureHelp(result)!;
 
@@ -126,11 +126,11 @@ public sealed class LanguageEditTests
     [Fact]
     public void Parses_code_actions_and_bare_commands_and_drops_disabled_ones()
     {
-        var result = JsonDocument.Parse("""
+        var result = JsonElement.Parse("""
             [{"title":"Organize imports","command":"gopls.organize","arguments":[1]},
              {"title":"Remove unused import","kind":"quickfix","isPreferred":true,"edit":{"changes":{}}},
              {"title":"Not now","kind":"refactor","disabled":{"reason":"no"}}]
-            """).RootElement;
+            """);
 
         var actions = LspJson.ReadCodeActions(result);
 
