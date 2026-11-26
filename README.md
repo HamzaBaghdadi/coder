@@ -248,3 +248,7 @@ Next steps, roughly in order:
 2. Themes, next: semantic token colors, font styles (italic, bold) from themes, and icon themes from VS Code
 3. More language features: code lenses, an outline view of the file's symbols, call hierarchy, and settings for each server from settings.json
 4. Terminal: macOS and Linux, shell integration for Git Bash and other shells, re-running a command from its mark
+
+## License
+
+Coder is licensed under the [Apache License 2.0](LICENSE). The file icons come from the Material Icon Theme (MIT, see `assets/material-icons/LICENSE`).
