@@ -254,6 +254,8 @@ public sealed class GitTests : IDisposable
         }
 
         Git("init", "-q");
+        Git("config", "user.name", "Test"); // CI machines have no identity; git would complain about that first
+        Git("config", "user.email", "test@example.com");
         var repository = GitRepository.Open(_root)!;
 
         var error = await Assert.ThrowsAsync<GitException>(() => repository.CommitAsync("nothing staged", TestContext.Current.CancellationToken));
