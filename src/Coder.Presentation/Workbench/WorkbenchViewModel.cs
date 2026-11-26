@@ -38,6 +38,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
 {
     private readonly IDialogService _dialogs;
     private readonly ISettingsStore _settingsStore;
+    private readonly IFileSystem _fileSystem;
     private readonly IColorThemeCatalog? _themes;
     private readonly DocumentReloader _reloader;
     private bool _isSideBarVisible;
@@ -54,6 +55,15 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
     private string _colorTheme;
     private string _terminalProfile;
     private IReadOnlyList<Coder.Core.Terminal.ShellProfile>? _shellProfiles;
+    private readonly Coder.Core.Extensions.ExtensionStore _extensionStore;
+    private readonly IReadOnlyList<Coder.Core.Extensions.IExtensionSource> _extensionSources;
+
+    /// <summary>The workbench properties that are settings: a change to one is pushed by Settings Sync.</summary>
+    private static readonly HashSet<string> SyncedProperties =
+    [
+        nameof(EditorFontSize), nameof(ColorTheme), nameof(IsSideBarOnRight), nameof(ActivityBarLocation),
+        nameof(IsMinimapVisible), nameof(MinimapRendersCharacters), nameof(TerminalProfileId),
+    ];
 
     /// <param name="languageServers">Starts language servers; null turns language features off (tests).</param>
     /// <param name="managed">Tools Coder ships (Prettier); null turns them off (tests).</param>
@@ -63,6 +73,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
     {
         _dialogs = dialogs;
         _settingsStore = settingsStore;
+        _fileSystem = fileSystem;
         _themes = themes;
         Settings = settingsStore.Load();
         _isSideBarVisible = Settings.IsSideBarVisible;
@@ -78,10 +89,9 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
 
         Explorer = new ExplorerViewModel(fileSystem);
         Updates = new Coder.Presentation.Updates.UpdatesViewModel(updates ?? new Coder.Presentation.Updates.NoUpdates());
-        Extensions = new Coder.Presentation.Extensions.ExtensionsViewModel(
-            extensionStore ?? new Coder.Core.Extensions.ExtensionStore(Path.Combine(Path.GetTempPath(), "coder-extensions-none"), SharedHttp.Value),
-            extensionSources ?? [],
-            ShowThemePickerAsync);
+        _extensionStore = extensionStore ?? new Coder.Core.Extensions.ExtensionStore(Path.Combine(Path.GetTempPath(), "coder-extensions-none"), SharedHttp.Value);
+        _extensionSources = extensionSources ?? [];
+        Extensions = new Coder.Presentation.Extensions.ExtensionsViewModel(_extensionStore, _extensionSources, ShowThemePickerAsync);
         Editors = new EditorGroupViewModel(fileSystem, dialogs);
         StatusBar = new StatusBarViewModel(Editors);
         Find = new FindViewModel(Editors);
@@ -161,7 +171,155 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
                 Explorer.Reveal(shown);
             }
         };
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is { } name && SyncedProperties.Contains(name))
+            {
+                Sync?.NotifyLocalChange();
+            }
+        };
+        InlayHints.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(InlayHintsService.IsEnabled))
+            {
+                Sync?.NotifyLocalChange();
+            }
+        };
+        SourceControl.Blame.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SourceControl.Blame.IsInlineEnabled))
+            {
+                Sync?.NotifyLocalChange();
+            }
+        };
         RegisterCommands();
+    }
+
+    /// <summary>Settings Sync (sign in with GitHub); null until <see cref="EnableSettingsSync"/> (tests leave it off).</summary>
+    public SettingsSyncViewModel? Sync { get; private set; }
+
+    /// <summary>Turns on Settings Sync: its commands, its row on the settings page and its items in the Manage menu.</summary>
+    /// <param name="openUrl">Opens a page in the browser (GitHub's sign-in page).</param>
+    /// <param name="copy">Puts text on the clipboard (the sign-in code).</param>
+    public SettingsSyncViewModel EnableSettingsSync(Coder.Core.Sync.SettingsSyncService service, Action<Uri> openUrl, Func<string, Task> copy, TimeSpan? debounce = null)
+    {
+        if (Sync is not null)
+        {
+            return Sync;
+        }
+
+        Sync = new SettingsSyncViewModel(service, _extensionStore, _extensionSources, _dialogs, CurrentSettings, ApplySyncedSettings,
+            message => StatusBar.Message = message, openUrl, copy, debounce);
+        Register(CommandIds.SettingsSyncSignIn, "Settings Sync", "Sign in with GitHub to Sync Settings…", null, Sync.SignInAsync);
+        Register(CommandIds.SettingsSyncCancelSignIn, "Settings Sync", "Cancel Sign-in", null, Sync.CancelSignIn);
+        Register(CommandIds.SettingsSyncNow, "Settings Sync", "Sync Now", null, Sync.SyncNowAsync);
+        Register(CommandIds.SettingsSyncTurnOn, "Settings Sync", "Turn On", null, Sync.TurnOnAsync);
+        Register(CommandIds.SettingsSyncTurnOff, "Settings Sync", "Turn Off", null, Sync.TurnOff);
+        Register(CommandIds.SettingsSyncSignOut, "Settings Sync", "Sign Out", null, Sync.SignOut);
+        OnPropertyChanged(nameof(Sync));
+        return Sync;
+    }
+
+    /// <summary>Coder Agent, the chat in the secondary side bar; null until <see cref="EnableAgent"/> (tests may leave it off).</summary>
+    public Coder.Presentation.Agent.AgentViewModel? Agent { get; private set; }
+
+    /// <summary>Turns on Coder Agent: the chat, its commands and its providers.</summary>
+    public Coder.Presentation.Agent.AgentViewModel EnableAgent(Coder.Presentation.Agent.AgentServices services)
+    {
+        if (Agent is not null)
+        {
+            return Agent;
+        }
+
+        var workspace = new Coder.Presentation.Agent.AgentWorkspace(
+            () => Explorer.RootPath,
+            _fileSystem,
+            Editors,
+            files => Languages.NotifyFilesChanged(files),
+            OpenFileAsync,
+            Palette);
+        Agent = new Coder.Presentation.Agent.AgentViewModel(services, workspace, Settings);
+        Register(CommandIds.AgentFocus, "Coder Agent", "Open Chat", "Ctrl+Alt+I", ShowAgent);
+        Register(CommandIds.AgentNewChat, "Coder Agent", "New Chat", null, () =>
+        {
+            ShowAgent();
+            Agent.NewChat();
+        });
+        Register(CommandIds.AgentPickModel, "Coder Agent", "Select Model…", null, () =>
+        {
+            ShowAgent();
+            return Agent.ShowModelPickerAsync();
+        });
+        Register(CommandIds.AgentManageProviders, "Coder Agent", "Manage Providers and API Keys", null, () =>
+        {
+            ShowAgent();
+            Agent.IsProvidersOpen = true;
+        });
+        Register(CommandIds.AgentAddActiveFile, "Coder Agent", "Add Active File to Chat", null, async () =>
+        {
+            if (Editors.ActiveTab?.FilePath is { } path)
+            {
+                ShowAgent();
+                await Agent.AddPathsAsync([path]);
+            }
+        });
+        OnPropertyChanged(nameof(Agent));
+        return Agent;
+    }
+
+    /// <summary>Shows the secondary side bar with the chat and puts the caret in its input.</summary>
+    public void ShowAgent()
+    {
+        IsSecondarySideBarVisible = true;
+        Agent?.Focus();
+    }
+
+    /// <summary>The settings as they are now (what closing would save), without what only the view knows (window, side bar width).</summary>
+    public UserSettings CurrentSettings() => Settings with
+    {
+        AgentProviders = Agent?.ProviderSettings ?? Settings.AgentProviders,
+        AgentProvider = Agent?.ProviderId ?? Settings.AgentProvider,
+        AgentModel = Agent?.Model ?? Settings.AgentModel,
+        RecentFolders = RecentFolders.ToList(),
+        EditorFontSize = EditorFontSize,
+        IsSideBarVisible = IsSideBarVisible,
+        GpuAcceleration = _gpuAcceleration,
+        ColorTheme = ColorTheme,
+        TerminalProfile = _terminalProfile,
+        InlineBlame = SourceControl.Blame.IsInlineEnabled,
+        InlayHints = InlayHints.IsEnabled,
+        SideBarLocation = IsSideBarOnRight ? "right" : "left",
+        ShowMinimap = IsMinimapVisible,
+        MinimapRenderCharacters = MinimapRendersCharacters,
+        ActivityBarLocation = ActivityBarLocation,
+    };
+
+    /// <summary>Settings that came from another machine: applied at once, like changing them here.</summary>
+    public void ApplySyncedSettings(UserSettings synced)
+    {
+        EditorFontSize = synced.EditorFontSize;
+        ColorTheme = synced.ColorTheme ?? ColorTheme;
+        IsSideBarOnRight = synced.SideBarLocation == "right";
+        ActivityBarLocation = synced.ActivityBarLocation ?? "side";
+        IsMinimapVisible = synced.ShowMinimap;
+        MinimapRendersCharacters = synced.MinimapRenderCharacters;
+        TerminalProfileId = synced.TerminalProfile ?? string.Empty;
+        SourceControl.Blame.IsInlineEnabled = synced.InlineBlame;
+        InlayHints.IsEnabled = synced.InlayHints;
+        var previousServers = Settings.LanguageServers;
+        Settings = Settings with
+        {
+            SideBarDefaultWidth = synced.SideBarDefaultWidth,
+            ExplorerAutoReveal = synced.ExplorerAutoReveal,
+            ExtensionRegistry = synced.ExtensionRegistry ?? string.Empty,
+            OpenVsx = synced.OpenVsx,
+            LanguageServers = synced.LanguageServers ?? [],
+        };
+        _settingsPage?.RefreshAll();
+        if (!previousServers.SequenceEqual(Settings.LanguageServers, LanguageServerSettingComparer.Instance))
+        {
+            _ = Languages.RestartAsync();
+        }
     }
 
     public ExplorerViewModel Explorer { get; }
@@ -320,11 +478,40 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
     {
         if (_settingsPage is null)
         {
-            _settingsPage = new SettingsPageViewModel(CreateSettingItems(), OpenSettingsFileAsync);
+            _settingsPage = new SettingsPageViewModel([.. SyncSettingItems(), .. CreateSettingItems()], OpenSettingsFileAsync);
             PropertyChanged += (_, _) => _settingsPage.RefreshAll(); // a command or key changed a value
+            if (Sync is not null)
+            {
+                Sync.PropertyChanged += (_, _) => _settingsPage.RefreshAll();
+            }
         }
 
         Editors.Show(_settingsPage);
+    }
+
+    /// <summary>The "Settings Sync" row: who is signed in, and the one thing to do next.</summary>
+    private IEnumerable<SettingItem> SyncSettingItems()
+    {
+        if (Sync is not { } sync)
+        {
+            yield break;
+        }
+
+        yield return new ActionSetting("Settings Sync", "Settings Sync",
+            "Sign in with GitHub and your settings and extensions follow you to every machine you sign in on. They are kept in a secret gist in your GitHub account; the window's position, recent folders and GPU acceleration stay per machine.",
+            () => sync.StatusText,
+            () => sync.IsSigningIn ? "Cancel Sign-in" : !sync.IsSignedIn ? "Sign in with GitHub…" : sync.IsSyncOn ? "Sync Now" : "Turn On Sync",
+            () =>
+            {
+                if (sync.IsSigningIn)
+                {
+                    sync.CancelSignIn();
+                    return Task.CompletedTask;
+                }
+
+                return sync.IsSignedIn ? sync.TurnOnAsync() : sync.SignInAsync();
+            })
+        { Keywords = "github account sync gist cloud backup sign in" };
     }
 
     private List<SettingItem> CreateSettingItems() =>
@@ -339,7 +526,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
             [new("side", "Side"), new("top", "Top"), new("bottom", "Bottom"), new("hidden", "Hidden")],
             () => ActivityBarLocation, value => ActivityBarLocation = value) { Keywords = "layout icons" },
         new NumberSetting("Appearance", "Side Bar Default Width", "The width, in pixels, that double-clicking the side bar's edge returns it to.",
-            () => Settings.SideBarDefaultWidth, value => Settings.SideBarDefaultWidth = value, 170, 800) { Keywords = "layout sidebar size" },
+            () => Settings.SideBarDefaultWidth, value => { Settings.SideBarDefaultWidth = value; Sync?.NotifyLocalChange(); }, 170, 800) { Keywords = "layout sidebar size" },
 
         new NumberSetting("Editor", "Font Size", "The size of code in the editor and terminal. Ctrl+= and Ctrl+- change it too.",
             () => EditorFontSize, value => EditorFontSize = value, 8, 40) { Keywords = "zoom text" },
@@ -353,7 +540,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
             () => SourceControl.Blame.IsInlineEnabled, value => SourceControl.Blame.IsInlineEnabled = value) { Keywords = "git author" },
 
         new ToggleSetting("Explorer", "Auto Reveal", "The explorer selects the file you are editing, opening its folders.",
-            () => Settings.ExplorerAutoReveal, value => Settings.ExplorerAutoReveal = value) { Keywords = "files tree follow" },
+            () => Settings.ExplorerAutoReveal, value => { Settings.ExplorerAutoReveal = value; Sync?.NotifyLocalChange(); }) { Keywords = "files tree follow" },
 
         new ChoiceSetting("Terminal", "Default Shell", "The shell new terminals start.",
             ShellProfiles.Select(p => new SettingOption(p.Id, p.Name)).ToList(),
@@ -789,6 +976,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
 
         var previous = Settings.LanguageServers;
         Settings = _settingsStore.Load();
+        Sync?.NotifyLocalChange();
         if (!previous.SequenceEqual(Settings.LanguageServers, LanguageServerSettingComparer.Instance))
         {
             await Languages.RestartAsync();
@@ -874,23 +1062,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>Persists the session. The view supplies what only it knows (window and side bar size).</summary>
     public void SaveSettings(WindowPlacement window, double sideBarWidth) =>
-        _settingsStore.Save(Settings with
-        {
-            RecentFolders = RecentFolders.ToList(),
-            EditorFontSize = EditorFontSize,
-            IsSideBarVisible = IsSideBarVisible,
-            GpuAcceleration = _gpuAcceleration,
-            ColorTheme = ColorTheme,
-            TerminalProfile = _terminalProfile,
-            InlineBlame = SourceControl.Blame.IsInlineEnabled,
-            InlayHints = InlayHints.IsEnabled,
-            SideBarWidth = sideBarWidth,
-            SideBarLocation = IsSideBarOnRight ? "right" : "left",
-            ShowMinimap = IsMinimapVisible,
-            MinimapRenderCharacters = MinimapRendersCharacters,
-            ActivityBarLocation = ActivityBarLocation,
-            Window = window,
-        });
+        _settingsStore.Save(CurrentSettings() with { SideBarWidth = sideBarWidth, Window = window });
 
     private void RegisterCommands()
     {

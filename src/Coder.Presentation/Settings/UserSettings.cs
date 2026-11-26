@@ -63,6 +63,34 @@ public sealed record UserSettings
 
     /// <summary>Language servers to use instead of (or in addition to) the built-in ones.</summary>
     public IReadOnlyList<LanguageServerSetting> LanguageServers { get; set; } = [];
+
+    /// <summary>
+    /// Coder Agent's chat services (their keys are kept encrypted elsewhere, never here). Null until the
+    /// user changes them: FreeLLMAPI, OpenRouter and Ollama are offered.
+    /// </summary>
+    public IReadOnlyList<AgentProviderSetting>? AgentProviders { get; set; }
+
+    /// <summary>The provider id Coder Agent chats with.</summary>
+    public string AgentProvider { get; set; } = string.Empty;
+
+    /// <summary>The model Coder Agent chats with (the provider's model id).</summary>
+    public string AgentModel { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// A chat service for Coder Agent, e.g. <c>{ "id": "openrouter", "kind": "openrouter", "name": "OpenRouter",
+/// "baseUrl": "https://openrouter.ai/api/v1" }</c>. Kinds: "openai" (any OpenAI-compatible server),
+/// "openrouter", "freellmapi" and "ollama".
+/// </summary>
+public sealed record AgentProviderSetting
+{
+    public string Id { get; set; } = string.Empty;
+
+    public string Kind { get; set; } = "openai";
+
+    public string Name { get; set; } = string.Empty;
+
+    public string BaseUrl { get; set; } = string.Empty;
 }
 
 /// <summary>

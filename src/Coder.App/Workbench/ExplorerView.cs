@@ -37,6 +37,7 @@ public sealed class ExplorerView : DockPanel
     private (ExplorerItemViewModel Item, Point Start, IPointer Pointer)? _pressed;
     private ExplorerItemViewModel? _dragged;
     private Control? _dropTarget;
+    private readonly PathDrag _pathDrag = new();
 
     public ExplorerView(WorkbenchViewModel workbench)
     {
@@ -281,6 +282,16 @@ public sealed class ExplorerView : DockPanel
             Item("Copy Relative Path", null, () => _ = CopyAsync(Path.GetRelativePath(_explorer.RootPath!, path).Replace('\\', '/'))),
         };
 
+        if (item is not null && _workbench.Agent is { } agent)
+        {
+            items.Add(new Separator());
+            items.Add(Item("Add to Coder Agent Chat", null, () =>
+            {
+                _workbench.ShowAgent();
+                _ = agent.AddPathsAsync([item.Path]);
+            }));
+        }
+
         if (item is not null)
         {
             items.Add(new Separator());
@@ -357,6 +368,16 @@ public sealed class ExplorerView : DockPanel
             _list.Cursor = new Cursor(StandardCursorType.DragMove);
         }
 
+        // Over Coder Agent's chat: the file is attached there instead of moved.
+        if (_pathDrag.Move(_list, e) is not null)
+        {
+            SetDropTarget(null);
+            _list.Cursor = new Cursor(StandardCursorType.DragCopy);
+            e.Handled = true;
+            return;
+        }
+
+        _list.Cursor = new Cursor(StandardCursorType.DragMove);
         var target = RowAt(_list.InputHitTest(position) as Visual);
         var targetItem = target?.DataContext as ExplorerItemViewModel;
         var highlight = targetItem is { IsDirectory: false } ? ParentRow(targetItem) : target; // over a file: its folder
@@ -375,9 +396,15 @@ public sealed class ExplorerView : DockPanel
 
         e.Pointer.Capture(null);
         _list.Cursor = null;
-        var target = RowAt(_list.InputHitTest(e.GetPosition(_list)) as Visual)?.DataContext as ExplorerItemViewModel;
         SetDropTarget(null);
         e.Handled = true;
+        if (_pathDrag.Drop(_list, e, [dragged.Path]))
+        {
+            _dragged = null;
+            return;
+        }
+
+        var target = RowAt(_list.InputHitTest(e.GetPosition(_list)) as Visual)?.DataContext as ExplorerItemViewModel;
         try
         {
             await _explorer.MoveAsync(dragged, target); // over empty space: the top of the tree

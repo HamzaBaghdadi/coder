@@ -96,6 +96,23 @@ public sealed class ChoiceSetting(string category, string title, string descript
     public override void Refresh() => OnPropertyChanged(nameof(Selected));
 }
 
+/// <summary>A button and a line saying the current state (Settings Sync: "Signed in as…", "Sync Now").</summary>
+public sealed class ActionSetting(string category, string title, string description, Func<string> status, Func<string> actionLabel, Func<Task> run)
+    : SettingItem(category, title, description)
+{
+    public string Status => status();
+
+    public string ActionLabel => actionLabel();
+
+    public Task RunAsync() => run();
+
+    public override void Refresh()
+    {
+        OnPropertyChanged(nameof(Status));
+        OnPropertyChanged(nameof(ActionLabel));
+    }
+}
+
 public sealed record SettingOption(string Id, string Label)
 {
     public override string ToString() => Label;

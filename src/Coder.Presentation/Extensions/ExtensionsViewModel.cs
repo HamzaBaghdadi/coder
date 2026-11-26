@@ -30,6 +30,7 @@ public sealed class ExtensionsViewModel : ObservableObject, IDisposable
         _sources = sources;
         _pickTheme = pickTheme;
         RefreshInstalled();
+        _store.Changed += OnStoreChanged; // Settings Sync installs and uninstalls too
     }
 
     /// <summary>Installed extensions matching the search.</summary>
@@ -85,6 +86,7 @@ public sealed class ExtensionsViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _store.Changed -= OnStoreChanged;
         var search = _search;
         _search = null;
         search?.Cancel();
@@ -200,6 +202,16 @@ public sealed class ExtensionsViewModel : ObservableObject, IDisposable
 
     /// <summary>The theme catalog's ids for an extension's themes start with this.</summary>
     public static string ThemePrefix(string extensionId) => $"vscode:{extensionId}/";
+
+    private void OnStoreChanged(object? sender, EventArgs e)
+    {
+        RefreshInstalled();
+        var installed = _store.Installed().Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var result in Results.Where(r => r.Listing is { } l && installed.Contains(l.Id)).ToList())
+        {
+            Results.Remove(result);
+        }
+    }
 
     private void RefreshInstalled()
     {

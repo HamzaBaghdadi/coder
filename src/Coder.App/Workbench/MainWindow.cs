@@ -20,7 +20,7 @@ public sealed class MainWindow : Window
 {
     private const double SideBarMinWidth = 170;
     private const double TerminalPanelHeight = 280;
-    private const double SecondarySideBarWidth = 300;
+    private const double SecondarySideBarWidth = 380;
 
     private readonly WorkbenchViewModel _workbench;
     private readonly KeyBindingRouter _keyBindings;
@@ -107,7 +107,7 @@ public sealed class MainWindow : Window
         var primary = new DockPanel { Children = { sideBar } };
         var secondaryColumn = new ColumnDefinition(0, GridUnitType.Pixel);
         var secondarySplitter = new GridSplitter { Width = 2, ResizeDirection = GridResizeDirection.Columns, IsVisible = false };
-        var secondary = new SecondarySideBar { IsVisible = false };
+        var secondary = new SecondarySideBar(_workbench) { IsVisible = false };
         var outerLeft = new ColumnDefinition(GridLength.Auto);
         var outerRight = new ColumnDefinition(GridLength.Auto);
         var grid = new Grid

@@ -36,10 +36,37 @@ public sealed class ExtensionStoreTests : IDisposable
 
         Assert.Equal(["Acme Midnight"], installed.Themes);
         Assert.Equal(1, changed);
-        Assert.Single(store.Installed());
+        Assert.Equal("Coder", Assert.Single(store.Installed()).Source); // remembered, so Settings Sync installs it from there elsewhere
+        Assert.Equal(listing, await ((IExtensionSource)source).FindAsync("ACME.midnight", TestContext.Current.CancellationToken));
+        Assert.Null(await ((IExtensionSource)source).FindAsync("acme.other", TestContext.Current.CancellationToken));
         var theme = Assert.Single(VsCodeThemeCatalog.Discover([ExtensionsFolder], null));
         Assert.Equal("vscode:acme.midnight/Acme Midnight", theme.Id);
         Assert.True(File.Exists(theme.Path));
+    }
+
+    /// <summary>Settings Sync finds an Open VSX extension by id through its own address (latest version).</summary>
+    [Fact]
+    public async Task Open_vsx_finds_an_extension_by_id()
+    {
+        using var http = new HttpClient(new OpenVsxStub());
+        var source = new OpenVsxSource(http, "https://open-vsx.test");
+        var found = await source.FindAsync("acme.midnight", TestContext.Current.CancellationToken);
+        Assert.NotNull(found);
+        Assert.Equal(("acme.midnight", "2.0.0", "Open VSX"), (found.Id, found.Version, found.Source));
+        Assert.Equal("https://open-vsx.test/acme.midnight-2.0.0.vsix", found.DownloadUrl);
+        Assert.Null(await source.FindAsync("acme.gone", TestContext.Current.CancellationToken));
+        Assert.Null(await source.FindAsync("no-dot", TestContext.Current.CancellationToken));
+    }
+
+    private sealed class OpenVsxStub : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(request.RequestUri!.AbsolutePath == "/api/acme/midnight"
+                ? new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"namespace":"acme","name":"midnight","version":"2.0.0","displayName":"Midnight","files":{"download":"https://open-vsx.test/acme.midnight-2.0.0.vsix","sha256":"https://open-vsx.test/sha"}}""", Encoding.UTF8, "application/json"),
+                }
+                : new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
     }
 
     /// <summary>A download that doesn't match the published checksum is refused, and nothing is left behind.</summary>

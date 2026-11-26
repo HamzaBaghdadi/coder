@@ -1,10 +1,14 @@
+using Avalonia.Input.Platform;
 using Coder.App.Services;
 using Coder.App.Theme;
 using Coder.App.Workbench;
+using Coder.Core.Ai;
 using Coder.Core.Extensions;
 using Coder.Core.Files;
 using Coder.Core.Lsp;
+using Coder.Core.Sync;
 using Coder.Core.Themes;
+using Coder.Presentation.Agent;
 using Coder.Presentation.Settings;
 using Coder.Presentation.Workbench;
 
@@ -18,6 +22,15 @@ public static class CompositionRoot
 {
     /// <summary>One client for the marketplace: requests name only the app, never the user.</summary>
     private static readonly HttpClient Http = CreateHttp();
+
+    /// <summary>
+    /// The GitHub OAuth app Settings Sync signs in with (device flow: a public client id, no secret).
+    /// <c>CODER_GITHUB_CLIENT_ID</c> overrides it, e.g. to test with another app.
+    /// </summary>
+    private static string GitHubClientId =>
+        Environment.GetEnvironmentVariable("CODER_GITHUB_CLIENT_ID") is { Length: > 0 } id ? id : DefaultGitHubClientId;
+
+    private const string DefaultGitHubClientId = "Ov23liRohqWd9TkfvPUr";
 
     public static MainWindow CreateMainWindow(IReadOnlyList<string> args, ISettingsStore settings)
     {
@@ -46,10 +59,26 @@ public static class CompositionRoot
         // Language servers and tools Coder ships: bundled next to the app, or installed on first use into "servers" next to settings.json.
         var managed = new ManagedServers([Path.Combine(AppContext.BaseDirectory, "servers")], Path.Combine(dataFolder, "servers"));
         var workbench = new WorkbenchViewModel(new LocalFileSystem(), dialogs, settings, new ProcessLanguageServerLauncher(managed), themes, managed, extensions, sources, new VelopackUpdateService());
+        // Coder Agent: the user's own providers. Keys are encrypted with DPAPI next to settings.json, never inside it.
+        workbench.EnableAgent(new AgentServices(AgentHttp, new DpapiApiKeyStore(Path.Combine(dataFolder, "agent", "api-keys.bin")), new ShellCommandRunner()));
         ThemeManager.Follow(workbench, themes); // before the window is built, so it opens in the right colors
         window = new MainWindow(workbench);
         CrashReporter.Install(message => workbench.StatusBar.Message = message);
         workbench.Updates.StartBackgroundChecks(); // quietly, after start-up; offers a restart when a new version is ready
+
+        // Settings Sync: the GitHub token is encrypted with DPAPI next to settings.json, never inside it.
+        var syncFolder = Path.Combine(dataFolder, "sync");
+        var sync = workbench.EnableSettingsSync(
+            new SettingsSyncService(Http, GitHubClientId, syncFolder, new DpapiTokenStore(Path.Combine(syncFolder, "github-token.bin"))),
+            uri => _ = window.Launcher.LaunchUriAsync(uri),
+            async text =>
+            {
+                if (window.Clipboard is { } clipboard)
+                {
+                    await clipboard.SetTextAsync(text);
+                }
+            });
+        window.Opened += (_, _) => _ = sync.StartAsync(); // pull quietly once the window is up
 
         if (args.Count > 0)
         {
@@ -61,6 +90,19 @@ public static class CompositionRoot
         }
 
         return window;
+    }
+
+    /// <summary>
+    /// Coder Agent's client: no overall timeout, since replies stream for minutes (each request is
+    /// cancelled by Stop, and listing models has its own limit).
+    /// </summary>
+    private static readonly HttpClient AgentHttp = CreateAgentHttp();
+
+    private static HttpClient CreateAgentHttp()
+    {
+        var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("Coder/0.1");
+        return http;
     }
 
     private static HttpClient CreateHttp()

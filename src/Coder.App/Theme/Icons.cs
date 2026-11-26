@@ -22,6 +22,10 @@ public static class Icons
     public static readonly Geometry Extensions = Geometry.Parse("M5.5 4h3A1.5 1.5 0 0 1 10 5.5v3A1.5 1.5 0 0 1 8.5 10h-3A1.5 1.5 0 0 1 4 8.5v-3A1.5 1.5 0 0 1 5.5 4Z M5.5 14h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 4 18.5v-3A1.5 1.5 0 0 1 5.5 14Z M15.5 14h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5v-3a1.5 1.5 0 0 1 1.5-1.5Z M16.9 2.9l2.1 2.1a1.5 1.5 0 0 1 0 2.1L16.9 9.2a1.5 1.5 0 0 1-2.1 0L12.7 7.1a1.5 1.5 0 0 1 0-2.1L14.8 2.9a1.5 1.5 0 0 1 2.1 0Z");
     // A cog, after Lucide's "settings" (ISC license).
     public static readonly Geometry Settings = Geometry.Parse("M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6Z");
+    // A person in a circle, after Lucide's "circle-user" (ISC license): the accounts button.
+    public static readonly Geometry Account = Geometry.Parse("M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20Z M12 7a3 3 0 1 0 0 6a3 3 0 1 0 0-6Z M7 20.66V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.66");
+    // A door with an arrow out, after Lucide's "log-out" (ISC license).
+    public static readonly Geometry SignOut = Geometry.Parse("M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5l-5-5 M21 12H9");
     public static readonly Geometry Command = Geometry.Parse("M5 7l5 5l-5 5 M12 18h7");
     public static readonly Geometry ArrowUp = Geometry.Parse("M12 19V5 M6 11l6-6l6 6");
     public static readonly Geometry ArrowDown = Geometry.Parse("M12 5v14 M6 13l6 6l6-6");
@@ -51,6 +55,14 @@ public static class Icons
     public static readonly Geometry LayoutPanelShown = Geometry.Parse("M6 5.5h12a2.5 2.5 0 0 1 2.5 2.5v8a2.5 2.5 0 0 1-2.5 2.5H6a2.5 2.5 0 0 1-2.5-2.5V8A2.5 2.5 0 0 1 6 5.5Z M3.5 13h17 M5.5 15h13 M5.5 16.8h13");
     public static readonly Geometry LayoutSecondary = Geometry.Parse("M6 5.5h12a2.5 2.5 0 0 1 2.5 2.5v8a2.5 2.5 0 0 1-2.5 2.5H6a2.5 2.5 0 0 1-2.5-2.5V8A2.5 2.5 0 0 1 6 5.5Z M15 5.5v13");
     public static readonly Geometry LayoutSecondaryShown = Geometry.Parse("M6 5.5h12a2.5 2.5 0 0 1 2.5 2.5v8a2.5 2.5 0 0 1-2.5 2.5H6a2.5 2.5 0 0 1-2.5-2.5V8A2.5 2.5 0 0 1 6 5.5Z M15 5.5v13 M16.8 7.5v9 M18.7 7.5v9");
+    // Coder Agent.
+    public static readonly Geometry Sparkle = Geometry.Parse("M11 3.5l1.9 5.1L18 10.5l-5.1 1.9L11 17.5l-1.9-5.1L4 10.5l5.1-1.9Z M18.5 15l.8 2.2l2.2.8l-2.2.8l-.8 2.2l-.8-2.2l-2.2-.8l2.2-.8Z");
+    public static readonly Geometry Send = Geometry.Parse("M12 19V5 M6 11l6-6l6 6");
+    public static readonly Geometry Stop = Geometry.Parse("M8 7h8a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z");
+    public static readonly Geometry Attach = Geometry.Parse("M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8");
+    public static readonly Geometry Image = Geometry.Parse("M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z M9 8a1.5 1.5 0 1 0 0 3a1.5 1.5 0 1 0 0-3Z M20 15l-4.5-4.5L6 20");
+    public static readonly Geometry Copy = Geometry.Parse("M10 9h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z M15 9V6a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3");
+    public static readonly Geometry Key = Geometry.Parse("M8 11a4 4 0 1 0 0 8a4 4 0 1 0 0-8Z M10.8 12.2L19 4 M16 7l2.5 2.5 M14 9l2 2");
     public static readonly Geometry Minimize = Geometry.Parse("M6 12h12");
     public static readonly Geometry Maximize = Geometry.Parse("M8.5 6.5h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z");
     public static readonly Geometry Restore = Geometry.Parse("M8 9h5.5A1.5 1.5 0 0 1 15 10.5V16a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 16v-5.5A1.5 1.5 0 0 1 8 9Z M9 9V8a1.5 1.5 0 0 1 1.5-1.5H16A1.5 1.5 0 0 1 17.5 8v5.5A1.5 1.5 0 0 1 16 15h-1");

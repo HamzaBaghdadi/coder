@@ -53,6 +53,8 @@ public sealed class TitleBar : Border
                     () => workbench.IsPanelVisible = !workbench.IsPanelVisible),
                 SideToggle(workbench, left: false),
                 new Border { Width = Spacing.S },
+                Account(workbench),
+                new Border { Width = Spacing.S },
                 new CaptionButtons(window),
             },
         };
@@ -63,6 +65,29 @@ public sealed class TitleBar : Border
         grid.Children.Add(CommandCenter(workbench).Column(1));
         grid.Children.Add(right.Column(2));
         Child = grid;
+    }
+
+    /// <summary>The account button, once Settings Sync is set up (the app does that; tests may not).</summary>
+    private static Panel Account(WorkbenchViewModel workbench)
+    {
+        var host = new Panel { VerticalAlignment = VerticalAlignment.Center };
+        void Fill()
+        {
+            if (host.Children.Count == 0 && workbench.Sync is { } sync)
+            {
+                host.Children.Add(new AccountButton(workbench, sync));
+            }
+        }
+
+        Fill();
+        workbench.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(WorkbenchViewModel.Sync))
+            {
+                Fill();
+            }
+        };
+        return host;
     }
 
     /// <summary>
@@ -86,41 +111,45 @@ public sealed class TitleBar : Border
 
         button.Command = new RelayCommand(() =>
         {
-            var updates = workbench.Updates;
-            MenuItem Item(string header, string? keys, string command)
-            {
-                var item = new MenuItem { Header = header, InputGesture = keys is null ? null : KeyGesture.Parse(keys), Command = workbench.Commands.ToCommand(command) };
-                AutomationProperties.SetName(item, header);
-                return item;
-            }
-
-            var update = updates.IsReady
-                ? Item($"Restart to Update ({updates.Version})", null, CommandIds.RestartToUpdate)
-                : Item(updates.State == Presentation.Updates.UpdateState.Downloading ? updates.StatusText : "Check for Updates…", null, CommandIds.CheckForUpdates);
-            if (updates.IsReady)
-            {
-                update.Classes.Add("accent");
-            }
-
-            var menu = new ContextMenu
-            {
-                ItemsSource = new List<Control>
-                {
-                    Item("Command Palette…", "Ctrl+Shift+P", CommandIds.CommandPalette),
-                    new Separator(),
-                    Item("Settings", "Ctrl+OemComma", CommandIds.OpenSettingsPage),
-                    Item("Extensions", "Ctrl+Shift+X", CommandIds.ShowExtensions),
-                    Item("Color Theme", null, CommandIds.ColorTheme),
-                    new Separator(),
-                    update,
-                    new MenuItem { Header = $"Coder {updates.CurrentVersion}", IsEnabled = false },
-                },
-                Placement = PlacementMode.BottomEdgeAlignedRight,
-            };
+            var menu = new ContextMenu { ItemsSource = ManageMenuItems(workbench), Placement = PlacementMode.BottomEdgeAlignedRight };
             menu.Open(button);
         });
         WindowDecorationProperties.SetElementRole(button, WindowDecorationsElementRole.User);
         return new Panel { Children = { button, dot } };
+    }
+
+    /// <summary>The Manage menu as it is right now (it is built each time it opens). Internal for tests.</summary>
+    internal static List<Control> ManageMenuItems(WorkbenchViewModel workbench)
+    {
+        var updates = workbench.Updates;
+        MenuItem Item(string header, string? keys, string command)
+        {
+            var item = new MenuItem { Header = header, InputGesture = keys is null ? null : KeyGesture.Parse(keys), Command = workbench.Commands.ToCommand(command) };
+            AutomationProperties.SetName(item, header);
+            return item;
+        }
+
+        var update = updates.IsReady
+            ? Item($"Restart to Update ({updates.Version})", null, CommandIds.RestartToUpdate)
+            : Item(updates.State == Presentation.Updates.UpdateState.Downloading ? updates.StatusText : "Check for Updates…", null, CommandIds.CheckForUpdates);
+        if (updates.IsReady)
+        {
+            update.Classes.Add("accent");
+        }
+
+        var items = new List<Control>
+        {
+            Item("Command Palette…", "Ctrl+Shift+P", CommandIds.CommandPalette),
+            new Separator(),
+            Item("Settings", "Ctrl+OemComma", CommandIds.OpenSettingsPage),
+            Item("Extensions", "Ctrl+Shift+X", CommandIds.ShowExtensions),
+            Item("Color Theme", null, CommandIds.ColorTheme),
+        };
+
+        items.Add(new Separator());
+        items.Add(update);
+        items.Add(new MenuItem { Header = $"Coder {updates.CurrentVersion}", IsEnabled = false });
+        return items;
     }
 
     /// <summary>
