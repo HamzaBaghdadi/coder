@@ -30,21 +30,50 @@ public sealed class OpenVsxSource(HttpClient http, string baseUrl = "https://ope
 
         return (result?.Extensions ?? [])
             .Where(e => !e.Deprecated && e.Files?.Download is not null && e.Namespace is not null && e.Name is not null)
-            .Select(e => new ExtensionListing(
-                $"{e.Namespace}.{e.Name}",
-                e.DisplayName is { Length: > 0 } display ? display : e.Name!,
-                e.Namespace!,
-                e.Description ?? string.Empty,
-                e.Version ?? "0.0.0",
-                e.DownloadCount,
-                e.Verified,
-                e.Files!.Icon,
-                e.Files.Download!,
-                null,
-                e.Files.Sha256,
-                Name))
+            .Select(ToListing)
             .ToList();
     }
+
+    /// <summary>One extension's latest version, straight from <c>/api/{namespace}/{name}</c>.</summary>
+    public async Task<ExtensionListing?> FindAsync(string id, CancellationToken cancellationToken = default)
+    {
+        var dot = id.IndexOf('.', StringComparison.Ordinal);
+        if (dot <= 0 || dot == id.Length - 1)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var response = await http.GetAsync($"{baseUrl.TrimEnd('/')}/api/{Uri.EscapeDataString(id[..dot])}/{Uri.EscapeDataString(id[(dot + 1)..])}", cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+
+            response.EnsureSuccessStatusCode();
+            var e = await response.Content.ReadFromJsonAsync(ExtensionJson.Default.OpenVsxExtension, cancellationToken);
+            return e is { Files.Download: not null, Namespace: not null, Name: not null } ? ToListing(e) : null;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            throw new ExtensionException("Open VSX couldn't be reached. Check your connection and try again.", exception);
+        }
+    }
+
+    private ExtensionListing ToListing(OpenVsxExtension e) => new(
+        $"{e.Namespace}.{e.Name}",
+        e.DisplayName is { Length: > 0 } display ? display : e.Name!,
+        e.Namespace!,
+        e.Description ?? string.Empty,
+        e.Version ?? "0.0.0",
+        e.DownloadCount,
+        e.Verified,
+        e.Files!.Icon,
+        e.Files.Download!,
+        null,
+        e.Files.Sha256,
+        Name);
 }
 
 /// <summary>

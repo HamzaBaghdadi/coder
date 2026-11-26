@@ -71,6 +71,12 @@ public static class CommandIds
     public const string ShowExtensions = "view.showExtensions";
     public const string CheckForUpdates = "help.checkForUpdates";
     public const string RestartToUpdate = "help.restartToUpdate";
+    public const string SettingsSyncSignIn = "settingsSync.signIn";
+    public const string SettingsSyncCancelSignIn = "settingsSync.cancelSignIn";
+    public const string SettingsSyncNow = "settingsSync.syncNow";
+    public const string SettingsSyncTurnOn = "settingsSync.turnOn";
+    public const string SettingsSyncTurnOff = "settingsSync.turnOff";
+    public const string SettingsSyncSignOut = "settingsSync.signOut";
     public const string GitCommit = "git.commit";
     public const string GitRefresh = "git.refresh";
     public const string GitStageAll = "git.stageAll";
@@ -113,4 +119,9 @@ public static class CommandIds
     public const string ToggleMinimap = "editor.toggleMinimap";
     public const string OpenSettingsPage = "preferences.openSettingsPage";
     public const string ShowMemoryUsage = "developer.showMemoryUsage";
+    public const string AgentFocus = "agent.focus";
+    public const string AgentNewChat = "agent.newChat";
+    public const string AgentPickModel = "agent.pickModel";
+    public const string AgentManageProviders = "agent.manageProviders";
+    public const string AgentAddActiveFile = "agent.addActiveFile";
 }

@@ -5,20 +5,47 @@ using Avalonia.Media;
 using Coder.App.Controls;
 using Coder.App.Mvvm;
 using Coder.App.Theme;
+using Coder.App.Workbench.Agent;
+using Coder.Presentation.Workbench;
 
 namespace Coder.App.Workbench;
 
 /// <summary>
-/// The side bar on the right of the editors. It has no views yet; it is the place agents (and other
-/// views moved out of the primary side bar) will live, so for now it explains itself calmly.
+/// The side bar on the other side of the editors from the primary one. It holds Coder Agent, the chat;
+/// a workbench without the agent (tests) gets a calm placeholder instead.
 /// </summary>
 public sealed class SecondarySideBar : Border
 {
-    public SecondarySideBar()
+    public SecondarySideBar(WorkbenchViewModel workbench)
     {
         Background = Palette.SideBar;
         BorderBrush = Palette.Border;
         BorderThickness = new Thickness(1, 0, 0, 0);
+        Show(workbench);
+        workbench.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(WorkbenchViewModel.Agent))
+            {
+                Show(workbench);
+            }
+        };
+    }
+
+    /// <summary>The chat, when the agent is on.</summary>
+    public AgentView? Agent => Child as AgentView;
+
+    private void Show(WorkbenchViewModel workbench)
+    {
+        if (workbench.Agent is { } agent)
+        {
+            if (Child is not AgentView)
+            {
+                Child = new AgentView(agent);
+            }
+
+            return;
+        }
+
         Child = new DockPanel
         {
             Children =

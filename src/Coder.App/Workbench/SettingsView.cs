@@ -141,6 +141,12 @@ public sealed class SettingsView : DockPanel
             text.Children.Add(new TextBlock { Text = note, Foreground = Palette.TextMuted, FontSize = Typography.CaptionSize });
         }
 
+        if (item is ActionSetting action)
+        {
+            text.Children.Add(new TextBlock { Foreground = Palette.TextMuted, FontSize = Typography.CaptionSize, TextWrapping = TextWrapping.Wrap }
+                .Bind(TextBlock.TextProperty, action, x => x.Status));
+        }
+
         var control = Editor(item);
         AutomationProperties.SetName(control, item.Title);
         control.VerticalAlignment = VerticalAlignment.Center;
@@ -166,6 +172,15 @@ public sealed class SettingsView : DockPanel
             .Bind(NumericUpDown.ValueProperty, number, x => x.Value, Avalonia.Data.BindingMode.TwoWay),
         ChoiceSetting choice => new ComboBox { ItemsSource = choice.Options, MinWidth = 200 }
             .Bind(ComboBox.SelectedItemProperty, choice, x => x.Selected, Avalonia.Data.BindingMode.TwoWay),
+        ActionSetting action => ActionButton(action),
         _ => new Panel(),
     };
+
+    private static FlatButton ActionButton(ActionSetting action)
+    {
+        var button = new FlatButton { Padding = new Thickness(10, 4), MinWidth = 130, HorizontalContentAlignment = HorizontalAlignment.Center }
+            .Bind(ContentControl.ContentProperty, action, x => x.ActionLabel);
+        button.Click += async (_, _) => await action.RunAsync();
+        return button;
+    }
 }

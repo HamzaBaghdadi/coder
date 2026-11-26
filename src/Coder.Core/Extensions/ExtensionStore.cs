@@ -17,6 +17,9 @@ namespace Coder.Core.Extensions;
 public sealed class ExtensionStore(string folder, HttpClient http)
 {
     public const long MaxPackageBytes = 64L * 1024 * 1024;
+
+    /// <summary>Written next to package.json: the source the extension came from.</summary>
+    private const string SourceFile = ".coder-source";
     private static readonly JsonDocumentOptions JsonOptions = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
 
     public string Folder => folder;
@@ -114,10 +117,11 @@ public sealed class ExtensionStore(string folder, HttpClient http)
                 throw new ExtensionException($"{listing.DisplayName} wasn't installed: the package is {extension.Id}, not {listing.Id}.");
             }
 
+            File.WriteAllText(Path.Combine(staging, SourceFile), listing.Source); // so Settings Sync knows where to find it again
             RemoveVersions(extension.Id); // one version at a time
             var target = Path.Combine(folder, $"{extension.Id}-{extension.Version}");
             Directory.Move(staging, target);
-            return extension with { Folder = target };
+            return extension with { Folder = target, Source = listing.Source };
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {
@@ -252,6 +256,7 @@ public sealed class ExtensionStore(string folder, HttpClient http)
                 themes)
             {
                 IconPath = String(root, "icon") is { } icon && File.Exists(Path.Combine(directory, icon)) ? Path.GetFullPath(Path.Combine(directory, icon)) : null,
+                Source = File.Exists(Path.Combine(directory, SourceFile)) ? File.ReadAllText(Path.Combine(directory, SourceFile)).Trim() is { Length: > 0 } source ? source : null : null,
             };
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)

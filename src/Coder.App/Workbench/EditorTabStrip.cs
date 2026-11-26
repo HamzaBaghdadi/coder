@@ -17,12 +17,16 @@ namespace Coder.App.Workbench;
 /// <summary>
 /// Horizontally scrolling tabs: a slim scroll bar shows when they overflow, the wheel scrolls them
 /// sideways, and the active tab is kept in view. The active tab blends into the editor and carries an accent top line;
-/// a dirty tab shows a dot that turns into a close button on hover. Middle-click closes a tab.
+/// a dirty tab shows a dot that turns into a close button on hover. Middle-click closes a tab, and a
+/// file's tab can be dragged onto Coder Agent's chat to attach the file.
 /// </summary>
 public sealed class EditorTabStrip : Border
 {
     /// <summary>Pixels the tabs move per wheel notch.</summary>
     private const double WheelStep = 60;
+
+    /// <summary>Pixels a press moves before it becomes a drag (onto Coder Agent's chat).</summary>
+    private const double DragThreshold = 6;
 
     private readonly EditorGroupViewModel _editors;
     private readonly ItemsControl _tabs;
@@ -155,6 +159,10 @@ public sealed class EditorTabStrip : Border
                 Update();
             }
         };
+        // A file's tab can be dragged onto Coder Agent's chat to attach the file.
+        Point? pressedAt = null;
+        var dragging = false;
+        var drag = new PathDrag();
         root.PointerPressed += (_, e) =>
         {
             var point = e.GetCurrentPoint(root).Properties;
@@ -166,7 +174,60 @@ public sealed class EditorTabStrip : Border
             else if (point.IsLeftButtonPressed)
             {
                 _editors.ActiveTab = tab;
+                pressedAt = tab.FilePath is null ? null : e.GetPosition(root);
             }
+        };
+
+        root.PointerMoved += (_, e) =>
+        {
+            if (pressedAt is not { } start)
+            {
+                return;
+            }
+
+            var position = e.GetPosition(root);
+            if (!dragging && Math.Abs(position.X - start.X) < DragThreshold && Math.Abs(position.Y - start.Y) < DragThreshold)
+            {
+                return;
+            }
+
+            if (!dragging)
+            {
+                dragging = true;
+                e.Pointer.Capture(root);
+            }
+
+            root.Cursor = new Cursor(drag.Move(root, e) is null ? StandardCursorType.No : StandardCursorType.DragCopy);
+            e.Handled = true;
+        };
+        root.PointerReleased += (_, e) =>
+        {
+            pressedAt = null;
+            if (!dragging)
+            {
+                return;
+            }
+
+            dragging = false;
+            e.Pointer.Capture(null);
+            root.Cursor = null;
+            if (tab.FilePath is { } path)
+            {
+                drag.Drop(root, e, [path]);
+            }
+            else
+            {
+                drag.Cancel();
+            }
+
+            e.Handled = true;
+        };
+        root.PointerCaptureLost += (_, _) =>
+        {
+            pressedAt = null;
+            dragging = false;
+            root.Cursor = null;
+            drag.Cancel();
         };
         Update();
 

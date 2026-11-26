@@ -25,6 +25,9 @@ public sealed record InstalledExtension(string Id, string DisplayName, string Pu
 {
     /// <summary>The extension's icon file (from package.json), when it has one.</summary>
     public string? IconPath { get; init; }
+
+    /// <summary>Where it was installed from ("Open VSX", "Coder"); null for extensions installed before Coder recorded it.</summary>
+    public string? Source { get; init; }
 }
 
 /// <summary>Somewhere extensions can be found.</summary>
@@ -36,6 +39,11 @@ public interface IExtensionSource
     /// <summary>Extensions Coder can use that match the query (popular ones for an empty query).</summary>
     /// <exception cref="ExtensionException">The source can't be reached or answered with something unreadable.</exception>
     Task<IReadOnlyList<ExtensionListing>> SearchAsync(string query, CancellationToken cancellationToken = default);
+
+    /// <summary>The extension with this id ("publisher.name"), latest version, or null when the source doesn't have it (Settings Sync).</summary>
+    /// <exception cref="ExtensionException">The source can't be reached.</exception>
+    async Task<ExtensionListing?> FindAsync(string id, CancellationToken cancellationToken = default) =>
+        (await SearchAsync(id, cancellationToken)).FirstOrDefault(l => string.Equals(l.Id, id, StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>Searching, downloading or installing failed; the message says why, for the user.</summary>

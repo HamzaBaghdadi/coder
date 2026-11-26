@@ -98,44 +98,8 @@ public sealed class HoverCard : Decorator
     }
 
     /// <summary>A code block colored with the editor's own lexer (the fence's language, else the file's).</summary>
-    private static SelectableTextBlock CodeBlock(string code, string? fenceLanguage, LanguageDefinition fileLanguage)
-    {
-        var language = Languages.All.FirstOrDefault(l => l.Id == fenceLanguage || l.FileExtensions.Contains("." + fenceLanguage)) ?? fileLanguage;
-        var lexer = new LineLexer(language);
-        var block = new SelectableTextBlock { FontFamily = Typography.Code, FontSize = 12.5, TextWrapping = TextWrapping.Wrap };
-        var state = LexState.Normal;
-        var tokens = new List<Token>();
-        var lines = code.Split('\n');
-        for (var i = 0; i < lines.Length; i++)
-        {
-            var line = lines[i];
-            tokens.Clear();
-            state = lexer.Tokenize(line, state, tokens);
-            var column = 0;
-            foreach (var token in tokens)
-            {
-                if (token.Start > column)
-                {
-                    block.Inlines!.Add(new Run(line[column..token.Start]) { Foreground = SyntaxColors.For(TokenKind.Text) });
-                }
-
-                block.Inlines!.Add(new Run(line.Substring(token.Start, token.Length)) { Foreground = SyntaxColors.For(token.Kind) });
-                column = token.Start + token.Length;
-            }
-
-            if (column < line.Length)
-            {
-                block.Inlines!.Add(new Run(line[column..]) { Foreground = SyntaxColors.For(TokenKind.Text) });
-            }
-
-            if (i < lines.Length - 1)
-            {
-                block.Inlines!.Add(new LineBreak());
-            }
-        }
-
-        return block;
-    }
+    private static SelectableTextBlock CodeBlock(string code, string? fenceLanguage, LanguageDefinition fileLanguage) =>
+        CodeText.Create(code, Languages.All.FirstOrDefault(l => l.Id == fenceLanguage || l.FileExtensions.Contains("." + fenceLanguage)) ?? fileLanguage);
 
     private static Border Rule() => new() { Height = 1, Background = Palette.BorderStrong, Margin = new Thickness(0, 2) };
 }
