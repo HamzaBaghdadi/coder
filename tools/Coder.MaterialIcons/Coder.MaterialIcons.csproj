@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Converts the Material Icon Theme npm package (MIT) into Coder's compact icon assets:
+    assets/material-icons/icons.txt (one line of vector layers per icon) and manifest.json (name mappings).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Coder.App: the Avalonia desktop shell. Views are written in plain C# (no XAML).
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>Coder</AssemblyName>
+    <RootNamespace>Coder.App</RootNamespace>
+    <ApplicationIcon Condition="Exists('..\..\assets\coder.ico')">..\..\assets\coder.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Lean runtime: smaller working set, faster startup. -->
+    <TieredPGO>true</TieredPGO>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Coder.App.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Velopack" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The logo, generated from assets/source by tools/Coder.IconTool. Read by Theme/Brand.cs. -->
+    <EmbeddedResource Include="..\..\assets\coder.png" LogicalName="Coder.Logo.png" />
+    <!-- File icons: the Material Icon Theme (MIT), converted by tools/Coder.MaterialIcons. Read by Theme/FileIcons.cs. -->
+    <EmbeddedResource Include="..\..\assets\material-icons\icons.txt" LogicalName="Coder.MaterialIcons.icons.txt" />
+    <EmbeddedResource Include="..\..\assets\material-icons\manifest.json" LogicalName="Coder.MaterialIcons.manifest.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Coder.Presentation\Coder.Presentation.csproj" />
+  </ItemGroup>
+</Project>

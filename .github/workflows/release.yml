@@ -1,0 +1,27 @@
+name: Release
+
+# Push a tag like v0.2.0 (matching <Version> in Directory.Build.props) to build the Windows installer
+# and update packages and publish them as a GitHub release. Installed copies of Coder update from it.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Test
+        run: dotnet test tests/Coder.Core.Tests -c Release
+      - name: Build, pack and publish
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./tools/release.ps1 -Publish -Repository "https://github.com/${{ github.repository }}"

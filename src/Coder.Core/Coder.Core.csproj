@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Coder.Core: the editor's domain. Text storage, editing rules, syntax lexing, file IO.
+    Must never reference a UI framework.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Coder.Core.Tests" />
+  </ItemGroup>
+</Project>
