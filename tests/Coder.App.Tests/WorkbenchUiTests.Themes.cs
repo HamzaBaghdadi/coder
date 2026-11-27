@@ -118,6 +118,21 @@ public sealed partial class WorkbenchUiTests
 
             Assert.Equal("vscode:someone.ember/Ember", workbench.ColorTheme);
             Assert.Equal("Ember", Palette.Current.Name);
+
+            // The settings page's Color Theme list holds the installed themes too, with the current one selected.
+            workbench.OpenSettingsPage();
+            var page = Assert.IsType<Presentation.Settings.SettingsPageViewModel>(workbench.Editors.ActiveTab);
+            var themeSetting = page.Visible.OfType<Presentation.Settings.ChoiceSetting>().Single(s => s.Title == "Color Theme");
+            for (var i = 0; i < 50 && themeSetting.Options.Count <= 5; i++)
+            {
+                await Task.Delay(20, TestContext.Current.CancellationToken);
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.Contains(themeSetting.Options, o => o.Label == "Ember");
+            Assert.Contains(themeSetting.Options, o => o.Label == "Paper");
+            Assert.Equal("Ember", themeSetting.Selected?.Label);
+            await workbench.OpenFileAsync(Path.Combine(RepositoryRoot, "src", "Coder.Core", "Text", "PieceTable.cs"));
             Assert.Equal(Avalonia.Media.Color.Parse("#201510"), Palette.EditorBackground.Color);
             Assert.Equal(Avalonia.Media.Color.Parse("#181008"), Palette.SideBar.Color);
             Assert.Equal(Avalonia.Media.Color.Parse("#FF9050"), ((Avalonia.Media.ISolidColorBrush)SyntaxColors.For(Coder.Core.Syntax.TokenKind.Keyword)).Color);
@@ -132,7 +147,7 @@ public sealed partial class WorkbenchUiTests
             Assert.False(Palette.Current.IsDark);
             Assert.Equal(ColorThemes.Daylight["TextPrimary"], Palette.Current["TextPrimary"]);
 
-            // A theme that has gone (extension uninstalled) falls back to Midnight Blue and says so.
+            // A theme that has gone (extension uninstalled) falls back to Obsidian and says so.
             workbench.ColorTheme = "vscode:someone.gone/Gone";
             Assert.Same(ColorThemes.MidnightBlue, Palette.Current);
             Assert.Contains("couldn't be loaded", workbench.StatusBar.Message, StringComparison.Ordinal);

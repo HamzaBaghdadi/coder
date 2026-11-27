@@ -3,7 +3,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
-using Coder.App.Controls;
 using Coder.App.Theme;
 using Coder.Core.Lsp;
 using Coder.Presentation.LanguageFeatures;
@@ -23,23 +22,28 @@ public sealed class CompletionWidget : Decorator
     public const double ListWidth = 440;
 
     /// <summary>Horizontal distance from the widget's edge to the label text, so labels line up with the typed word.</summary>
-    public const double LabelInset = 1 + 6 + BadgeSize + 8;
+    public const double LabelInset = 1 + Spacing.XS + BadgeLeft + BadgeSize + 8;
 
     private const double BadgeSize = 16;
+
+    /// <summary>The kind badge's distance from the row's left edge.</summary>
+    private const double BadgeLeft = Spacing.XS;
 
     public CompletionWidget(CompletionViewModel completion)
     {
         var rows = new RowList(completion);
         Width = ListWidth;
-        Child = new ChamferBorder
+        var card = new Border
         {
             Background = Palette.Elevated,
             BorderBrush = Palette.BorderStrong,
-            BorderThickness = 1,
-            Chamfer = Spacing.ChamferSmall,
-            Padding = new Thickness(1),
+            BorderThickness = new Thickness(1),
+            CornerRadius = Spacing.RadiusLarge,
+            Padding = new Thickness(Spacing.XS, 0), // rows inset from the rounded sides; the height stays rows + border
             Child = rows,
         };
+        ThemeManager.BindShadow(card, "0 8 24 0");
+        Child = card;
         IsVisible = false;
         completion.Changed += (_, _) =>
         {
@@ -79,8 +83,7 @@ public sealed class CompletionWidget : Decorator
                 var top = (i - _firstRow) * RowHeight;
                 if (i == completion.SelectedIndex)
                 {
-                    context.FillRectangle(Palette.Selected, new Rect(0, top, width, RowHeight));
-                    context.FillRectangle(Palette.Accent, new Rect(0, top, 2, RowHeight));
+                    context.DrawRectangle(Palette.Selected, new Pen(Palette.Accent, 1), new Rect(0.5, top + 0.5, width - 1, RowHeight - 1), Spacing.RadiusSmall.TopLeft, Spacing.RadiusSmall.TopLeft);
                 }
 
                 DrawRow(context, rows[i], top, width, i == completion.SelectedIndex);
@@ -90,12 +93,12 @@ public sealed class CompletionWidget : Decorator
         private static void DrawRow(DrawingContext context, CompletionRow row, double top, double width, bool selected)
         {
             var (glyph, kindBrush) = KindStyle(row.Item.Kind);
-            var badge = new Rect(6, top + (RowHeight - BadgeSize) / 2, BadgeSize, BadgeSize);
+            var badge = new Rect(BadgeLeft, top + (RowHeight - BadgeSize) / 2, BadgeSize, BadgeSize);
             context.DrawRectangle(new SolidColorBrush(kindBrush.Color, 0.16), null, badge, 3, 3);
             var badgeText = Text(glyph, 10.5, kindBrush, FontWeight.Bold, Typography.Ui);
             context.DrawText(badgeText, new Point(badge.X + (BadgeSize - badgeText.Width) / 2, badge.Y + (BadgeSize - badgeText.Height) / 2));
 
-            var labelLeft = LabelInset - 1;
+            var labelLeft = LabelInset - 1 - Spacing.XS;
             var label = Text(row.Item.Label, 13, Palette.TextPrimary, FontWeight.Normal, Typography.Code);
             foreach (var index in row.MatchedIndices.Where(i => i < row.Item.Label.Length))
             {
@@ -114,7 +117,7 @@ public sealed class CompletionWidget : Decorator
                 detailText.MaxTextWidth = detailSpace;
                 detailText.Trimming = TextTrimming.CharacterEllipsis;
                 detailText.TextAlignment = TextAlignment.Right;
-                context.DrawText(detailText, new Point(width - 10 - detailSpace, top + (RowHeight - detailText.Height) / 2));
+                context.DrawText(detailText, new Point(width - Spacing.S - detailSpace, top + (RowHeight - detailText.Height) / 2));
             }
         }
 

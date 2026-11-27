@@ -11,9 +11,9 @@ namespace Coder.App.Controls;
 
 /// <summary>
 /// The app's borderless button, used for icon buttons (toolbars, activity bar, tab close) and,
-/// with the <c>primary</c> class, for filled call-to-action buttons. Its background has the brand's
-/// cut corners (<see cref="Chamfer"/>, <see cref="ChamferCorners"/>), set per kind of button in
-/// <see cref="AppStyles"/> along with every state.
+/// with the <c>primary</c> class, for filled call-to-action buttons. Ordinary buttons are rounded
+/// (<see cref="Radius"/>); primary buttons keep the brand's cut corners (<see cref="Chamfer"/>). Both
+/// are set per kind of button in <see cref="AppStyles"/> along with every state.
 /// Icon-only instances must get an accessible name (the icon constructor requires one).
 /// </summary>
 public class FlatButton : Button
@@ -23,6 +23,10 @@ public class FlatButton : Button
 
     public static readonly StyledProperty<ChamferCorners> ChamferCornersProperty =
         ChamferBorder.CornersProperty.AddOwner<FlatButton>();
+
+    /// <summary>Corner radius when <see cref="Chamfer"/> is 0 (ordinary buttons are rounded; brand ones are cut).</summary>
+    public static readonly StyledProperty<double> RadiusProperty =
+        ChamferBorder.RadiusProperty.AddOwner<FlatButton>();
 
     /// <summary>Space around the icon in an icon button (both sides together).</summary>
     private const double IconButtonPadding = 10;
@@ -35,6 +39,7 @@ public class FlatButton : Button
         [!ChamferBorder.BorderBrushProperty] = button[!BorderBrushProperty],
         [!ChamferBorder.ChamferProperty] = button[!ChamferProperty],
         [!ChamferBorder.CornersProperty] = button[!ChamferCornersProperty],
+        [!ChamferBorder.RadiusProperty] = button[!RadiusProperty],
         [!Decorator.PaddingProperty] = button[!PaddingProperty],
         Child = new ContentPresenter
         {
@@ -72,6 +77,12 @@ public class FlatButton : Button
     {
         get => GetValue(ChamferProperty);
         set => SetValue(ChamferProperty, value);
+    }
+
+    public double Radius
+    {
+        get => GetValue(RadiusProperty);
+        set => SetValue(RadiusProperty, value);
     }
 
     public ChamferCorners ChamferCorners

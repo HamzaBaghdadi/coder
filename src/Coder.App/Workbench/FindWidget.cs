@@ -33,12 +33,12 @@ public sealed class FindWidget : Border
         _find = find;
         HorizontalAlignment = HorizontalAlignment.Right;
         VerticalAlignment = VerticalAlignment.Top;
-        Margin = new Thickness(0, 0, 22, 0);
-        Padding = new Thickness(4, 6, 6, 6);
+        Margin = new Thickness(0, Spacing.S, 22, 0);
+        Padding = new Thickness(Spacing.XS, Spacing.S, Spacing.S, Spacing.S);
         Background = Palette.Elevated;
         BorderBrush = Palette.BorderStrong;
-        BorderThickness = new Thickness(1, 0, 1, 1);
-        CornerRadius = new CornerRadius(0, 0, 8, 8);
+        BorderThickness = new Thickness(1);
+        CornerRadius = Spacing.RadiusLarge;
         ThemeManager.BindShadow(this, "0 8 24 0");
         this.Bind(IsVisibleProperty, find, x => x.IsOpen);
 
@@ -73,7 +73,7 @@ public sealed class FindWidget : Border
         var findRow = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 2,
+            Spacing = Spacing.XXS,
             Children =
             {
                 _query,
@@ -87,8 +87,8 @@ public sealed class FindWidget : Border
         var replaceRow = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 2,
-            Margin = new Thickness(0, 4, 0, 0),
+            Spacing = Spacing.XXS,
+            Margin = new Thickness(0, Spacing.XS, 0, 0),
             Children =
             {
                 _replacement,
@@ -103,7 +103,7 @@ public sealed class FindWidget : Border
             Children =
             {
                 expander.Dock(Dock.Left),
-                new StackPanel { Margin = new Thickness(4, 0, 0, 0), Children = { findRow, replaceRow } },
+                new StackPanel { Margin = new Thickness(Spacing.XS, 0, 0, 0), Children = { findRow, replaceRow } },
             },
         };
 
@@ -131,7 +131,7 @@ public sealed class FindWidget : Border
             Width = FieldWidth,
             Height = 28,
             MinHeight = 28,
-            Padding = new Thickness(6, 4),
+            Padding = new Thickness(Spacing.S, 0),
             PlaceholderText = placeholder,
             FontFamily = Typography.Code,
             FontSize = Typography.UiSize,

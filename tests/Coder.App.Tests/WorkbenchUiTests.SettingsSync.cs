@@ -96,7 +96,7 @@ public sealed partial class WorkbenchUiTests
 
             // The settings page has the row, with the next thing to do.
             workbench.OpenSettingsPage();
-            var row = Assert.Single(((SettingsPageViewModel)workbench.Editors.ActiveTab!).Items.OfType<ActionSetting>());
+            var row = Assert.Single(((SettingsPageViewModel)workbench.Editors.ActiveTab!).Items.OfType<ActionSetting>(), s => s.Category == "Settings Sync");
             Assert.Equal("Sync Now", row.ActionLabel);
             Save(window, "settings-sync-signed-in");
 

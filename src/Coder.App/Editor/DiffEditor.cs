@@ -23,15 +23,23 @@ public sealed class DiffEditor : DockPanel
     private readonly TextBlock _leftLabel = Label();
     private readonly TextBlock _rightLabel = Label();
     private readonly TextBlock _summary = new() { FontSize = Typography.SmallSize, Foreground = Palette.TextMuted, VerticalAlignment = VerticalAlignment.Center };
+    private readonly StackPanel _review = new() { Orientation = Orientation.Horizontal, Spacing = Spacing.S, Margin = new Thickness(0, 0, Spacing.S, 0), IsVisible = false };
+    private readonly FlatButton _accept = new() { Classes = { "primary" }, Content = "Accept", Padding = new Thickness(Spacing.M, 2), VerticalAlignment = VerticalAlignment.Center };
+    private readonly FlatButton _reject = new() { Classes = { "secondary" }, Content = "Reject", Padding = new Thickness(Spacing.M, 2), VerticalAlignment = VerticalAlignment.Center };
 
     public DiffEditor(Func<string, Task> openFile)
     {
+        _accept.Command = new RelayCommand(() => Diff?.Review?.Accept());
+        _reject.Command = new RelayCommand(() => Diff?.Review?.Reject());
+        _review.Children.Add(_accept);
+        _review.Children.Add(_reject);
         var actions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 2,
             Children =
             {
+                _review,
                 _summary,
                 new Border { Width = Spacing.S },
                 new FlatButton(Icons.ArrowUp, "Previous Change (Shift+F7)") { Command = new RelayCommand(() => GoToChange(-1)) },
@@ -80,7 +88,21 @@ public sealed class DiffEditor : DockPanel
         get => _view.Diff;
         set
         {
+            if (_view.Diff?.Review is { } previous)
+            {
+                previous.Decided -= OnDecided;
+            }
+
             _view.Diff = value;
+            if (value?.Review is { } review)
+            {
+                review.Decided += OnDecided;
+                var name = Path.GetFileName(value.FilePath);
+                Avalonia.Automation.AutomationProperties.SetName(_accept, $"Accept change to {name}");
+                Avalonia.Automation.AutomationProperties.SetName(_reject, $"Reject change to {name}");
+            }
+
+            _review.IsVisible = value?.Review is { IsPending: true };
             _leftLabel.Text = value?.OriginalLabel ?? string.Empty;
             _rightLabel.Text = value?.ModifiedLabel ?? string.Empty;
             var count = value?.Hunks.Count ?? 0;
@@ -100,6 +122,9 @@ public sealed class DiffEditor : DockPanel
     }
 
     public void FocusView() => _view.Focus();
+
+    private void OnDecided(object? sender, EventArgs e) =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => _review.IsVisible = Diff?.Review is { IsPending: true });
 
     /// <summary>Jumps to the next (or previous) change after the top visible row, wrapping around.</summary>
     private void GoToChange(int direction)

@@ -26,6 +26,10 @@ public sealed class JsonRpcConnection : IDisposable
     private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
     private readonly Dictionary<string, Action<JsonElement>> _notificationHandlers = [];
     private readonly Dictionary<string, Func<JsonElement, JsonNode?>> _requestHandlers = [];
+    private readonly Dictionary<string, Func<JsonElement, CancellationToken, Task<JsonNode?>>> _asyncRequestHandlers = [];
+
+    /// <summary>Async requests still running, by their raw id, so <c>$/cancelRequest</c> can stop them.</summary>
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _running = new();
     private readonly CancellationTokenSource _lifetime = new();
     private int _nextId;
     private int _closed;
@@ -48,6 +52,13 @@ public sealed class JsonRpcConnection : IDisposable
 
     /// <summary>Registers a handler for requests the other side sends; its return value is the result.</summary>
     public void OnRequest(string method, Func<JsonElement, JsonNode?> handler) => _requestHandlers[method] = handler;
+
+    /// <summary>
+    /// Registers a handler for requests that take a while (one that waits for the user). It runs off the
+    /// read loop, so other messages keep flowing; <c>$/cancelRequest</c> from the other side, or the
+    /// connection closing, cancels its token.
+    /// </summary>
+    public void OnRequestAsync(string method, Func<JsonElement, CancellationToken, Task<JsonNode?>> handler) => _asyncRequestHandlers[method] = handler;
 
     public void Start()
     {
@@ -163,6 +174,14 @@ public sealed class JsonRpcConnection : IDisposable
         {
             HandleRequest(id.Clone(), methodElement.GetString() ?? string.Empty, parameters);
         }
+        else if (hasMethod && methodElement.GetString() == "$/cancelRequest")
+        {
+            if (parameters.ValueKind == JsonValueKind.Object && parameters.TryGetProperty("id", out var cancelled)
+                && _running.TryGetValue(cancelled.GetRawText(), out var running))
+            {
+                running.Cancel();
+            }
+        }
         else if (hasMethod)
         {
             if (_notificationHandlers.TryGetValue(methodElement.GetString() ?? string.Empty, out var handler))
@@ -189,6 +208,12 @@ public sealed class JsonRpcConnection : IDisposable
 
     private void HandleRequest(JsonElement id, string method, JsonElement parameters)
     {
+        if (_asyncRequestHandlers.TryGetValue(method, out var asyncHandler))
+        {
+            _ = RespondAsync(id, asyncHandler, parameters);
+            return;
+        }
+
         var response = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = JsonNode.Parse(id.GetRawText()) };
         if (!_requestHandlers.TryGetValue(method, out var handler))
         {
@@ -209,6 +234,32 @@ public sealed class JsonRpcConnection : IDisposable
         Send(response);
     }
 
+    private async Task RespondAsync(JsonElement id, Func<JsonElement, CancellationToken, Task<JsonNode?>> handler, JsonElement parameters)
+    {
+        var key = id.GetRawText();
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _running[key] = cancellation;
+        var response = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = JsonNode.Parse(key) };
+        try
+        {
+            response["result"] = await Task.Run(() => handler(parameters, cancellation.Token), cancellation.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            response["error"] = new JsonObject { ["code"] = RequestCancelled, ["message"] = "Cancelled" };
+        }
+        catch (Exception exception)
+        {
+            response["error"] = new JsonObject { ["code"] = InternalError, ["message"] = exception.Message };
+        }
+        finally
+        {
+            _running.TryRemove(key, out _);
+        }
+
+        Send(response);
+    }
+
     private void Close(Exception? error)
     {
         if (Interlocked.Exchange(ref _closed, 1) != 0)
@@ -222,7 +273,7 @@ public sealed class JsonRpcConnection : IDisposable
         {
             if (_pending.TryRemove(id, out var completion))
             {
-                completion.TrySetException(new IOException("The language server connection closed.", error));
+                completion.TrySetException(new IOException("The connection closed.", error));
             }
         }
 

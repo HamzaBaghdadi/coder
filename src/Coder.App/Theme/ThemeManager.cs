@@ -22,7 +22,7 @@ public static class ThemeManager
 
     /// <summary>
     /// Applies the workbench's theme now and whenever it (or, for "system", the OS) changes. VS Code themes
-    /// come from <paramref name="catalog"/>; one that can't be found or read falls back to Midnight Blue.
+    /// come from <paramref name="catalog"/>; one that can't be found or read falls back to Obsidian.
     /// </summary>
     public static void Follow(WorkbenchViewModel workbench, ThemeCatalog? catalog = null)
     {
@@ -33,7 +33,7 @@ public static class ThemeManager
             var theme = Resolve(id);
             if (theme.Id != id && id is not FollowSystem)
             {
-                workbench.StatusBar.Message = $"The color theme \"{id}\" couldn't be loaded, so Midnight Blue is used.";
+                workbench.StatusBar.Message = $"The color theme \"{id}\" couldn't be loaded, so Obsidian is used.";
             }
 
             Apply(theme);

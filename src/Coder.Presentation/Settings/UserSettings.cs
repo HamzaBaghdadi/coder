@@ -20,6 +20,53 @@ public sealed record UserSettings
     /// <summary>The width double-clicking the side bar's edge returns it to.</summary>
     public double SideBarDefaultWidth { get; set; } = DefaultSideBarWidth;
 
+    public const double DefaultSecondarySideBarWidth = 380;
+
+    /// <summary>The secondary side bar's (Coder Agent's) width when it opens, and what double-clicking its edge returns it to.</summary>
+    public double SecondarySideBarDefaultWidth { get; set; } = DefaultSecondarySideBarWidth;
+
+    /// <summary>The code font's family; empty uses the built-in list (JetBrains Mono, Cascadia Code, …, the first installed).</summary>
+    public string EditorFontFamily { get; set; } = string.Empty;
+
+    /// <summary>Editor line height as a multiple of the font size.</summary>
+    public double EditorLineHeight { get; set; } = 1.5;
+
+    /// <summary>Spaces per indent level, for files that don't show their own (and the width of a tab character).</summary>
+    public int TabSize { get; set; } = 4;
+
+    /// <summary>Tab inserts spaces (otherwise a tab character), for files that don't show their own.</summary>
+    public bool InsertSpaces { get; set; } = true;
+
+    /// <summary>A file's own indentation (tabs, 2 or 4 spaces…) wins over the two settings above.</summary>
+    public bool DetectIndentation { get; set; } = true;
+
+    /// <summary>"off", "afterDelay" (after typing pauses) or "onFocusChange" (on switching tabs or windows).</summary>
+    public string AutoSave { get; set; } = "off";
+
+    /// <summary>Milliseconds after the last change before "afterDelay" auto save writes the file.</summary>
+    public double AutoSaveDelay { get; set; } = 1000;
+
+    /// <summary>Format the document (language server or Prettier) when saving it by hand.</summary>
+    public bool FormatOnSave { get; set; }
+
+    /// <summary>Remove spaces and tabs at the ends of lines when saving.</summary>
+    public bool TrimTrailingWhitespace { get; set; }
+
+    /// <summary>End the file with a newline when saving.</summary>
+    public bool InsertFinalNewline { get; set; }
+
+    /// <summary>The editor caret: "line", "block" or "underline".</summary>
+    public string CursorStyle { get; set; } = "line";
+
+    /// <summary>Whether the editor caret blinks.</summary>
+    public bool CursorBlinking { get; set; } = true;
+
+    /// <summary>The terminal's text size.</summary>
+    public double TerminalFontSize { get; set; } = 13;
+
+    /// <summary>The terminal's font family; empty uses the editor's code font list.</summary>
+    public string TerminalFontFamily { get; set; } = string.Empty;
+
     /// <summary>Where the primary side bar sits: "left" or "right". The secondary side bar takes the other side.</summary>
     public string SideBarLocation { get; set; } = "left";
 
@@ -29,7 +76,7 @@ public sealed record UserSettings
     /// <summary>GPU rendering (smoother) or software rendering (about half the memory). Applies on restart.</summary>
     public bool GpuAcceleration { get; set; } = true;
 
-    /// <summary>"dark" (Midnight Blue), "light" (Daylight) or "system" (follow the operating system).</summary>
+    /// <summary>"dark" (Obsidian), "light" (Daylight) or "system" (follow the operating system).</summary>
     public string ColorTheme { get; set; } = "dark";
 
     /// <summary>Who last changed the caret's line, shown at the end of it ("Git: Toggle Line Blame").</summary>
@@ -37,6 +84,9 @@ public sealed record UserSettings
 
     /// <summary>Parameter names and inferred types shown inside the code ("View: Toggle Inlay Hints").</summary>
     public bool InlayHints { get; set; } = true;
+
+    /// <summary>Headers of the blocks around the top of the editor stay pinned there ("View: Toggle Sticky Scroll").</summary>
+    public bool StickyScroll { get; set; } = true;
 
     /// <summary>The code in miniature on the editor's right edge ("View: Toggle Minimap").</summary>
     public bool ShowMinimap { get; set; } = true;
@@ -75,6 +125,18 @@ public sealed record UserSettings
 
     /// <summary>The model Coder Agent chats with (the provider's model id).</summary>
     public string AgentModel { get; set; } = string.Empty;
+
+    /// <summary>AI inline suggestions (gray text after the caret, Tab accepts), when a provider is set up.</summary>
+    public bool InlineSuggestions { get; set; } = true;
+
+    /// <summary>The provider id inline suggestions come from; empty for Coder Agent's.</summary>
+    public string InlineSuggestionsProvider { get; set; } = string.Empty;
+
+    /// <summary>The model inline suggestions come from (with <see cref="InlineSuggestionsProvider"/>).</summary>
+    public string InlineSuggestionsModel { get; set; } = string.Empty;
+
+    /// <summary>Milliseconds typing must pause before a suggestion is asked for.</summary>
+    public double InlineSuggestionsDelay { get; set; } = 300;
 }
 
 /// <summary>

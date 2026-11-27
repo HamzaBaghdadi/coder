@@ -44,11 +44,13 @@ public sealed class ImageViewer : Panel
         Children.Add(new Border
         {
             Background = Palette.Elevated,
-            CornerRadius = new CornerRadius(4),
+            BorderBrush = Palette.Border,
+            BorderThickness = new Thickness(1),
+            CornerRadius = Spacing.RadiusMedium,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Bottom,
             Margin = new Thickness(Spacing.M),
-            Padding = new Thickness(Spacing.S, 3),
+            Padding = new Thickness(Spacing.S, Spacing.XXS),
             Child = _info,
         });
         _info.Margin = default;

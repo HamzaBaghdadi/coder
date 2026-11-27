@@ -74,7 +74,7 @@ public sealed partial class EditorView
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
-        if (_editor is null || MinimapPressed(e))
+        if (_editor is null || MinimapPressed(e) || StickyPressed(e))
         {
             return;
         }
@@ -147,6 +147,13 @@ public sealed partial class EditorView
         }
 
         var position = e.GetPosition(this);
+        if (StickyMoved(position))
+        {
+            _pointer = null;
+            UpdateCtrlLink(null, e.KeyModifiers);
+            return;
+        }
+
         Cursor = position.X < GutterWidth ? Cursor.Default : TextCursor;
         _pointer = position;
         UpdateCtrlLink(position, e.KeyModifiers);

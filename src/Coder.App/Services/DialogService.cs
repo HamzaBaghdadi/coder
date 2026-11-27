@@ -4,7 +4,7 @@ using Coder.Presentation.Services;
 
 namespace Coder.App.Services;
 
-/// <summary>Native file pickers and modal questions, shown over the main window.</summary>
+/// <summary>Native file pickers, and modal questions drawn inside the main window in the app's design.</summary>
 public sealed class DialogService(Func<Window> owner) : IDialogService
 {
     public async Task<string?> PickFolderAsync()
@@ -38,10 +38,10 @@ public sealed class DialogService(Func<Window> owner) : IDialogService
                 new("Cancel", UnsavedChangesChoice.Cancel),
                 new("Save", UnsavedChangesChoice.Save, IsPrimary: true),
             ],
-            cancelResult: UnsavedChangesChoice.Cancel).ShowDialog<UnsavedChangesChoice>(owner());
+            cancelResult: UnsavedChangesChoice.Cancel).ShowAsync(owner());
 
     public Task<bool> ConfirmAsync(string message, string detail, string confirmLabel) =>
         new MessageDialog<bool>(message, detail,
             [new("Cancel", false), new(confirmLabel, true, IsPrimary: true)],
-            cancelResult: false).ShowDialog<bool>(owner());
+            cancelResult: false).ShowAsync(owner());
 }

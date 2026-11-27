@@ -17,7 +17,16 @@ public sealed record ExtensionListing(
     string DownloadUrl,
     string? Sha256,
     string? Sha256Url,
-    string Source);
+    string Source)
+{
+    /// <summary>The package includes a program Coder runs (with the user's consent), not just data.</summary>
+    public bool RunsProgram { get; init; }
+}
+
+/// <summary>A command an extension declares in its manifest (<c>contributes.commands</c>); its program runs it.</summary>
+/// <param name="Category">Shown before the title in the palette ("Claude Code"); the extension's name when the manifest gives none.</param>
+/// <param name="KeyBinding">Gesture text such as "Ctrl+Escape", or null.</param>
+public sealed record ExtensionCommand(string Id, string Category, string Title, string? KeyBinding);
 
 /// <summary>An extension in Coder's extensions folder.</summary>
 /// <param name="Themes">The color themes it contributes (their labels).</param>
@@ -28,6 +37,21 @@ public sealed record InstalledExtension(string Id, string DisplayName, string Pu
 
     /// <summary>Where it was installed from ("Open VSX", "Coder"); null for extensions installed before Coder recorded it.</summary>
     public string? Source { get; init; }
+
+    /// <summary>The languages it has snippets for (<c>contributes.snippets</c>), each once; "*" for a file of scoped snippets.</summary>
+    public IReadOnlyList<string> SnippetLanguages { get; init; } = [];
+
+    /// <summary>True when the manifest declares a program (<c>coder.program</c>), for any platform.</summary>
+    public bool DeclaresProgram { get; init; }
+
+    /// <summary>The program to run on this machine (inside the extension's folder), or null when it has none for this platform.</summary>
+    public string? ProgramPath { get; init; }
+
+    /// <summary>The commands it adds to the palette (<c>contributes.commands</c>).</summary>
+    public IReadOnlyList<ExtensionCommand> Commands { get; init; } = [];
+
+    /// <summary>The SHA-256 of the package it was installed from, when Coder recorded it; consent to run its program is tied to it.</summary>
+    public string? PackageSha256 { get; init; }
 }
 
 /// <summary>Somewhere extensions can be found.</summary>

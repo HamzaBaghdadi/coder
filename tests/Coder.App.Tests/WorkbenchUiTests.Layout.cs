@@ -337,8 +337,17 @@ public sealed partial class WorkbenchUiTests
         Assert.Equal(["Coder", "Temp", "Open Folder…"], list.Items.Cast<object>().Select(i => Avalonia.Automation.AutomationProperties.GetName(list.ContainerFromItem(i)!)));
         popupRoot.CaptureRenderedFrame()?.Save(Path.Combine(RepositoryRoot, "artifacts", "screenshots", "project-dropdown.png"));
 
-        // Down + Enter switches to the other project.
+        // On another project, both ways to open it show in place of its path; the current one has none.
         popupRoot.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+        Button? Action(string name) => list.GetVisualDescendants().OfType<Button>()
+            .FirstOrDefault(b => Avalonia.Automation.AutomationProperties.GetName(b) == name && b.IsEffectivelyVisible);
+        Assert.NotNull(Action("Open in This Window (Enter)"));
+        Assert.NotNull(Action("Open in New Window (Ctrl+Enter)"));
+        Assert.Single(list.GetVisualDescendants().OfType<Button>(), b => Avalonia.Automation.AutomationProperties.GetName(b) == "Open in New Window (Ctrl+Enter)");
+        popupRoot.CaptureRenderedFrame()?.Save(Path.Combine(RepositoryRoot, "artifacts", "screenshots", "project-dropdown-actions.png"));
+
+        // Enter switches to it in this window.
         popupRoot.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         Dispatcher.UIThread.RunJobs();
         Assert.False(switcher.IsOpen);

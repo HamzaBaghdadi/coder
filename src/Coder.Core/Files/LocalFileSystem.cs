@@ -95,6 +95,29 @@ public sealed class LocalFileSystem : IFileSystem
         }
     }
 
+    public void Copy(string from, string to)
+    {
+        if (File.Exists(from))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+            File.Copy(from, to, overwrite: false);
+            return;
+        }
+
+        // A folder: its tree, recreated (links are not followed, so a junction can't make this endless).
+        var source = new DirectoryInfo(from);
+        Directory.CreateDirectory(to);
+        foreach (var entry in source.EnumerateFileSystemInfos())
+        {
+            if (entry.LinkTarget is not null)
+            {
+                continue;
+            }
+
+            Copy(entry.FullName, Path.Combine(to, entry.Name));
+        }
+    }
+
     public void Delete(string path, bool recursive)
     {
         if (Directory.Exists(path))

@@ -6,6 +6,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using Coder.App.Controls;
 using Coder.App.Mvvm;
 using Coder.App.Theme;
@@ -16,9 +17,10 @@ using Coder.Presentation.Workbench;
 namespace Coder.App.Workbench;
 
 /// <summary>
-/// The project name in the title bar, and the dropdown it opens (like a select, as in Zed): recent
-/// projects, the current one checked, then "Open Folder…". Arrow keys move, Enter opens, Esc or a
-/// click elsewhere closes. Ctrl+R opens it too.
+/// The project name (with a chevron) in the title bar, and the dropdown it opens (like a select, as in Zed):
+/// recent projects, the current one checked, then "Open Folder…". Hovering another project, or moving the
+/// keyboard onto it, shows "Open in This Window" and "Open in New Window". Arrow keys move, Enter opens here,
+/// Ctrl+Enter opens in a new window, Esc or a click elsewhere closes. Ctrl+R opens it too.
 /// </summary>
 public sealed class ProjectSwitcher : Panel
 {
@@ -35,11 +37,21 @@ public sealed class ProjectSwitcher : Panel
 
         var button = new FlatButton
         {
-            Height = 26,
-            Padding = new Thickness(Spacing.S, 0),
+            Height = 28,
+            Padding = new Thickness(Spacing.S, 0, Spacing.XS + Spacing.XXS, 0),
             Command = new RelayCommand(Toggle),
-            Content = new TextBlock { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center }
-                .Bind(TextBlock.TextProperty, workbench, x => x.ProjectName),
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = Spacing.XS,
+                Children =
+                {
+                    new TextBlock { FontWeight = Typography.Strong, VerticalAlignment = VerticalAlignment.Center }
+                        .Bind(TextBlock.TextProperty, workbench, x => x.ProjectName),
+                    // The chevron says "this opens a list", like a select.
+                    new Icon(Icons.ChevronDown, 14) { Foreground = Palette.TextSecondary, VerticalAlignment = VerticalAlignment.Center },
+                },
+            },
         };
         AutomationProperties.SetName(button, "Recent projects");
         ToolTip.SetTip(button, "Switch project (Ctrl+R)");
@@ -57,6 +69,12 @@ public sealed class ProjectSwitcher : Panel
         _list.ContainerPrepared += (_, e) => AutomationProperties.SetName(e.Container, e.Container.DataContext is Entry entry ? entry.Name : string.Empty);
         _list.Tapped += async (_, e) =>
         {
+            // The row's own "open here / in a new window" buttons handle their clicks.
+            if ((e.Source as Visual)?.FindAncestorOfType<FlatButton>(includeSelf: true) is not null)
+            {
+                return;
+            }
+
             if (e.Source is Visual { DataContext: Entry entry })
             {
                 await ChooseAsync(entry);
@@ -64,7 +82,13 @@ public sealed class ProjectSwitcher : Panel
         };
         _list.OnRowKeyDown(async (_, e) =>
         {
-            if (e.Key == Key.Enter && _list.SelectedItem is Entry entry)
+            if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.Control && _list.SelectedItem is Entry { Folder: { } folder } chosen && !chosen.IsCurrent)
+            {
+                e.Handled = true;
+                _popup!.IsOpen = false;
+                OpenInNewWindow(folder);
+            }
+            else if (e.Key == Key.Enter && _list.SelectedItem is Entry entry)
             {
                 e.Handled = true;
                 await ChooseAsync(entry);
@@ -88,7 +112,7 @@ public sealed class ProjectSwitcher : Panel
                 Background = Palette.Elevated,
                 BorderBrush = Palette.BorderStrong,
                 BorderThickness = 1,
-                Chamfer = Spacing.ChamferSmall,
+                Radius = Spacing.RadiusLarge.TopLeft,
                 Padding = new Thickness(0, Spacing.XS),
                 Child = _list,
             },
@@ -146,12 +170,76 @@ public sealed class ProjectSwitcher : Panel
         }
     }
 
-    private static Control Row(Entry entry)
+    /// <summary>
+    /// Opens <paramref name="folder"/> in a second Coder window (its own process, like VS Code), with the same
+    /// data folder as this one, so the current project stays open and untouched.
+    /// </summary>
+    private static void OpenInNewWindow(string folder)
+    {
+        if (Environment.ProcessPath is not { } exe)
+        {
+            return;
+        }
+
+        var start = new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = false };
+        var args = Environment.GetCommandLineArgs();
+        var dataDir = Array.IndexOf(args, "--user-data-dir");
+        if (dataDir >= 0 && dataDir + 1 < args.Length)
+        {
+            start.ArgumentList.Add("--user-data-dir");
+            start.ArgumentList.Add(args[dataDir + 1]);
+        }
+
+        start.ArgumentList.Add(folder);
+        System.Diagnostics.Process.Start(start)?.Dispose();
+    }
+
+    private Control Row(Entry entry)
     {
         var isAction = entry.Folder is null;
+
+        // Other projects offer both ways to open on hover (or when the keyboard is on them), in place of the path.
+        Control trailing = new TextBlock
+        {
+            Text = entry.Detail,
+            FontSize = Typography.SmallSize,
+            Foreground = Palette.TextSecondary,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.LeadingCharacterEllipsis,
+            MaxWidth = 170,
+            Margin = new Thickness(Spacing.S, 0, 0, 0),
+        };
+        if (entry.Folder is { } folder && !entry.IsCurrent)
+        {
+            trailing.Classes.Add("row-detail"); // gives way to the actions below
+            var here = new FlatButton(Icons.OpenHere, "Open in This Window (Enter)", iconSize: 14)
+            {
+                Command = new RelayCommand(() => _ = ChooseAsync(entry)),
+            };
+            var newWindow = new FlatButton(Icons.NewWindow, "Open in New Window (Ctrl+Enter)", iconSize: 14)
+            {
+                Command = new RelayCommand(() =>
+                {
+                    _popup.IsOpen = false;
+                    OpenInNewWindow(folder);
+                }),
+            };
+            trailing = new Panel
+            {
+                Margin = new Thickness(Spacing.S, 0, 0, 0),
+                Children =
+                {
+                    trailing,
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = Spacing.XXS, Classes = { "row-actions" }, Children = { here, newWindow } },
+                },
+            };
+            ((TextBlock)((Panel)trailing).Children[0]).Margin = default;
+        }
+
         return new DockPanel
         {
-            Margin = new Thickness(Spacing.M, 0),
+            Margin = new Thickness(Spacing.M, 0, Spacing.XS, 0),
+            MinHeight = 30,
             Background = Brushes.Transparent,
             Children =
             {
@@ -162,20 +250,11 @@ public sealed class ProjectSwitcher : Panel
                     Margin = new Thickness(0, 0, Spacing.S, 0),
                     VerticalAlignment = VerticalAlignment.Center,
                 }.Dock(Dock.Left),
-                new TextBlock
-                {
-                    Text = entry.Detail,
-                    FontSize = Typography.SmallSize,
-                    Foreground = Palette.TextMuted,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    TextTrimming = TextTrimming.LeadingCharacterEllipsis,
-                    MaxWidth = 170,
-                    Margin = new Thickness(Spacing.S, 0, 0, 0),
-                }.Dock(Dock.Right),
+                trailing.Dock(Dock.Right),
                 new TextBlock
                 {
                     Text = entry.Name,
-                    FontWeight = entry.IsCurrent ? FontWeight.SemiBold : FontWeight.Normal,
+                    FontWeight = entry.IsCurrent ? Typography.Strong : FontWeight.Normal,
                     VerticalAlignment = VerticalAlignment.Center,
                     TextTrimming = TextTrimming.CharacterEllipsis,
                 },

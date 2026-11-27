@@ -25,7 +25,24 @@ public sealed class CommandRegistry
 
     public IEnumerable<CommandDefinition> All => _commands.Values;
 
-    public void Register(CommandDefinition command) => _commands.Add(command.Id, command);
+    /// <summary>Raised when a command is added or removed after startup (extensions), so key bindings follow.</summary>
+    public event EventHandler? Changed;
+
+    public void Register(CommandDefinition command)
+    {
+        _commands.Add(command.Id, command);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public bool Contains(string id) => _commands.ContainsKey(id);
+
+    public void Unregister(string id)
+    {
+        if (_commands.Remove(id))
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     public CommandDefinition Get(string id) => _commands[id];
 
@@ -71,6 +88,8 @@ public static class CommandIds
     public const string ShowExtensions = "view.showExtensions";
     public const string CheckForUpdates = "help.checkForUpdates";
     public const string RestartToUpdate = "help.restartToUpdate";
+    public const string InstallShellCommand = "workbench.action.installCommandLine";
+    public const string UninstallShellCommand = "workbench.action.uninstallCommandLine";
     public const string SettingsSyncSignIn = "settingsSync.signIn";
     public const string SettingsSyncCancelSignIn = "settingsSync.cancelSignIn";
     public const string SettingsSyncNow = "settingsSync.syncNow";
@@ -103,6 +122,7 @@ public static class CommandIds
     public const string NextReference = "references.next";
     public const string PreviousReference = "references.previous";
     public const string ToggleInlayHints = "editor.toggleInlayHints";
+    public const string ToggleStickyScroll = "editor.toggleStickyScroll";
     public const string ShowProblems = "view.problems";
     public const string FindReferences = "editor.findReferences";
     public const string RenameSymbol = "editor.rename";
@@ -124,4 +144,7 @@ public static class CommandIds
     public const string AgentPickModel = "agent.pickModel";
     public const string AgentManageProviders = "agent.manageProviders";
     public const string AgentAddActiveFile = "agent.addActiveFile";
+    public const string ToggleInlineSuggestions = "editor.toggleInlineSuggestions";
+    public const string TriggerInlineSuggestion = "editor.triggerInlineSuggestion";
+    public const string PickInlineSuggestionsModel = "editor.pickInlineSuggestionsModel";
 }

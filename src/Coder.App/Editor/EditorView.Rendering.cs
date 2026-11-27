@@ -49,13 +49,15 @@ public sealed partial class EditorView
             DrawCtrlLink(context);
             DrawDiagnostics(context, firstLine, lastLine);
             DrawBlame(context);
+            DrawInlineSuggestionLines(context, bounds.Width);
             DrawPreedit(context);
             DrawCarets(context, visible);
         }
 
         DrawGutter(context, firstLine, lastLine, caretLines, bounds.Height);
+        DrawStickyScroll(context, bounds);
         DrawMinimap(context);
-        _layouts.Trim(firstLine, lastLine);
+        _layouts.Trim(firstLine, lastLine, _stickyLines);
     }
 
     private double LineTop(int line) => line * _metrics.LineHeight - _offset.Y;
@@ -202,7 +204,21 @@ public sealed partial class EditorView
         {
             var caret = _editor!.Document.GetPosition(selection.Active);
             var x = Math.Round(CaretX(caret.Line, caret.Column));
-            context.FillRectangle(Palette.Caret, new Rect(x - 1, LineTop(caret.Line) + 2, 2, _metrics.LineHeight - 4));
+            var top = LineTop(caret.Line);
+            switch (CursorStyle)
+            {
+                case "block":
+                    // A translucent cell, so the character under it stays readable.
+                    context.FillRectangle(Palette.TextSelection, new Rect(x, top + 2, Math.Max(2, _metrics.CharWidth), _metrics.LineHeight - 4));
+                    context.DrawRectangle(new Pen(Palette.Caret, 1), new Rect(x + 0.5, top + 2.5, Math.Max(2, _metrics.CharWidth) - 1, _metrics.LineHeight - 5));
+                    break;
+                case "underline":
+                    context.FillRectangle(Palette.Caret, new Rect(x, top + _metrics.LineHeight - 4, Math.Max(2, _metrics.CharWidth), 2));
+                    break;
+                default:
+                    context.FillRectangle(Palette.Caret, new Rect(x - 1, top + 2, 2, _metrics.LineHeight - 4));
+                    break;
+            }
         }
     }
 

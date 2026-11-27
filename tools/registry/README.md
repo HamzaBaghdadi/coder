@@ -8,9 +8,11 @@ Coder finds extensions in two places:
   Publishing is a pull request that adds an entry to its `index.json`; packages live in GitHub Releases.
   The full guide and the validation check are in that repository.
 
-Coder never runs anything from an extension. A package is downloaded, checked against its SHA-256,
-size-limited (64 MB), unpacked into a staging folder that no entry may escape, and moved into
-`<user data>/extensions/<publisher.name-version>`.
+A package is downloaded, checked against its SHA-256, size-limited (64 MB), unpacked into a staging
+folder that no entry may escape, and moved into `<user data>/extensions/<publisher.name-version>`.
+Data extensions (themes, snippets) are only read. An extension may also include a **program**
+(`coder.program`), which Coder runs only after the user allowed it on that machine; see
+[EXTENSION-API.md](EXTENSION-API.md).
 
 ## index.json
 
@@ -35,6 +37,9 @@ size-limited (64 MB), unpacked into a staging folder that no entry may escape, a
 
 - `download` may be relative to the index (a mirror can ship packages next to it).
 - `sha256` is required in the public registry: Coder refuses a package that doesn't match.
+- An extension with a program is built per platform: instead of `download`/`sha256` its entry has
+  `"program": true` and `"platforms": { "win-x64": { "download": "...", "sha256": "..." }, ... }`.
+  Coder installs the one for its machine and doesn't list the extension where there is none.
 
 ## A package
 
@@ -54,7 +59,13 @@ The same layout as a VS Code extension, so one package works in both editors: a 
 }
 ```
 
-Coder uses `contributes.themes` today. Next: language servers (a server command and the npm package
-that provides it), snippets and icon themes, all declared in the same manifest.
+Coder uses `contributes.themes` and `contributes.snippets` today. Snippet files are VS Code's
+(`[{ "language": "csharp", "path": "./snippets/csharp.json" }]`, VS Code language ids such as
+`typescriptreact`; an entry without `language` reads each snippet's `scope`). They join the suggestion
+list by prefix, with tab stops, choices, variables and variable transforms. With `coder.program`, an
+extension runs a program that uses Coder's Editor API, and `contributes.commands` /
+`contributes.keybindings` add its commands ([EXTENSION-API.md](EXTENSION-API.md)). Next: language
+servers (a server command and the npm package that provides it) and icon themes, declared in the same
+manifest.
 
 To compute the checksum: `(Get-FileHash acme.ember-1.0.0.vsix -Algorithm SHA256).Hash`.

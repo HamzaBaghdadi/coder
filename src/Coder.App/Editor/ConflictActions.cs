@@ -149,9 +149,8 @@ public sealed class ConflictActions : Canvas
         {
             var button = new FlatButton
             {
-                Padding = new Thickness(4, 0),
+                Padding = new Thickness(Coder.App.Theme.Spacing.XS, 0),
                 VerticalAlignment = VerticalAlignment.Stretch,
-                Chamfer = 0,
                 Content = new TextBlock { Text = text, FontSize = Typography.SmallSize, VerticalAlignment = VerticalAlignment.Center },
                 Command = new RelayCommand(action),
             };

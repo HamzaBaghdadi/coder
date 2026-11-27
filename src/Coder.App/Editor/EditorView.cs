@@ -24,6 +24,21 @@ public sealed partial class EditorView : Control, ILogicalScrollable
     public static readonly StyledProperty<double> EditorFontSizeProperty =
         AvaloniaProperty.Register<EditorView, double>(nameof(EditorFontSize), 14);
 
+    /// <summary>The code font family from settings; empty uses the built-in preference list (Typography.Code).</summary>
+    public static readonly StyledProperty<string> EditorFontFamilyProperty =
+        AvaloniaProperty.Register<EditorView, string>(nameof(EditorFontFamily), string.Empty);
+
+    /// <summary>Line height as a multiple of the font size.</summary>
+    public static readonly StyledProperty<double> EditorLineHeightProperty =
+        AvaloniaProperty.Register<EditorView, double>(nameof(EditorLineHeight), Typography.LineHeightFactor);
+
+    /// <summary>The caret shape: "line", "block" or "underline".</summary>
+    public static readonly StyledProperty<string> CursorStyleProperty =
+        AvaloniaProperty.Register<EditorView, string>(nameof(CursorStyle), "line");
+
+    public static readonly StyledProperty<bool> CursorBlinkingProperty =
+        AvaloniaProperty.Register<EditorView, bool>(nameof(CursorBlinking), true);
+
     private const double GutterPaddingLeft = 20;
     private const double GutterPaddingRight = 18;
     private const double TextPaddingLeft = 6;
@@ -54,7 +69,7 @@ public sealed partial class EditorView : Control, ILogicalScrollable
 
     public EditorView()
     {
-        _metrics = CreateMetrics(EditorFontSize);
+        _metrics = CreateMetrics();
         _caretTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(530), DispatcherPriority.Render, (_, _) =>
         {
             _caretVisible = !_caretVisible;
@@ -99,6 +114,30 @@ public sealed partial class EditorView : Control, ILogicalScrollable
     {
         get => GetValue(EditorFontSizeProperty);
         set => SetValue(EditorFontSizeProperty, value);
+    }
+
+    public string EditorFontFamily
+    {
+        get => GetValue(EditorFontFamilyProperty);
+        set => SetValue(EditorFontFamilyProperty, value);
+    }
+
+    public double EditorLineHeight
+    {
+        get => GetValue(EditorLineHeightProperty);
+        set => SetValue(EditorLineHeightProperty, value);
+    }
+
+    public string CursorStyle
+    {
+        get => GetValue(CursorStyleProperty);
+        set => SetValue(CursorStyleProperty, value);
+    }
+
+    public bool CursorBlinking
+    {
+        get => GetValue(CursorBlinkingProperty);
+        set => SetValue(CursorBlinkingProperty, value);
     }
 
     public EditorState? Editor => _editor;
@@ -183,6 +222,8 @@ public sealed partial class EditorView : Control, ILogicalScrollable
         _widestLine = 0;
         InvalidateMinimap();
         ClearCtrlLink();
+        _scopesVersion = -1;
+        _stickyHover = -1;
 
         if (_editor is not null)
         {
@@ -242,9 +283,19 @@ public sealed partial class EditorView : Control, ILogicalScrollable
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == EditorFontSizeProperty)
+        if (change.Property == CursorBlinkingProperty)
         {
-            _metrics = CreateMetrics(EditorFontSize);
+            RestartCaretBlink();
+            InvalidateVisual();
+        }
+        else if (change.Property == CursorStyleProperty)
+        {
+            InvalidateVisual();
+        }
+
+        if (change.Property == EditorFontSizeProperty || change.Property == EditorFontFamilyProperty || change.Property == EditorLineHeightProperty)
+        {
+            _metrics = CreateMetrics();
             _layouts.Clear();
             _widestLine = 0;
             RaiseScrollInvalidated(EventArgs.Empty);
@@ -266,9 +317,10 @@ public sealed partial class EditorView : Control, ILogicalScrollable
 
         var target = _offset;
         var margin = _metrics.LineHeight * 2;
-        if (y < target.Y + margin)
+        var topMargin = Math.Max(margin, StickyHeight); // not under the pinned block headers
+        if (y < target.Y + topMargin)
         {
-            target = target.WithY(y - margin);
+            target = target.WithY(y - topMargin);
         }
         else if (y + _metrics.LineHeight > target.Y + _viewport.Height - margin)
         {
@@ -302,8 +354,12 @@ public sealed partial class EditorView : Control, ILogicalScrollable
         return new Vector(Math.Round(x), Math.Round(y));
     }
 
-    private static EditorMetrics CreateMetrics(double fontSize) =>
-        new(new Typeface(Typography.Code), fontSize, Typography.LineHeightFactor);
+    /// <summary>The chosen family first, then the built-in list, so a missing font falls back gracefully.</summary>
+    private EditorMetrics CreateMetrics()
+    {
+        var family = string.IsNullOrWhiteSpace(EditorFontFamily) ? Typography.Code : new FontFamily($"{EditorFontFamily}, {Typography.Code}");
+        return new(new Typeface(family), EditorFontSize, EditorLineHeight);
+    }
 
     // Change tracking ----------------------------------------------------------------------------
 
@@ -312,6 +368,7 @@ public sealed partial class EditorView : Control, ILogicalScrollable
         InvalidateMinimap();
         ClearCtrlLink();
         _layouts.InvalidateFrom(change.StartLine);
+        ScheduleScopes();
         if (change.ChangesLineCount)
         {
             RaiseScrollInvalidated(EventArgs.Empty);
@@ -338,7 +395,7 @@ public sealed partial class EditorView : Control, ILogicalScrollable
     {
         _caretVisible = true;
         _caretTimer.Stop();
-        if (IsFocused)
+        if (IsFocused && CursorBlinking)
         {
             _caretTimer.Start();
         }

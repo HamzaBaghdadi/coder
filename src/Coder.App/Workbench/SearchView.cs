@@ -23,6 +23,8 @@ namespace Coder.App.Workbench;
 public sealed class SearchView : DockPanel
 {
     private const double MatchIndent = 34;
+    private const double FieldHeight = 28;
+    private const double BadgeHeight = 18;
 
     private readonly SearchViewModel _search;
     private readonly TextBox _query;
@@ -35,9 +37,9 @@ public sealed class SearchView : DockPanel
 
         _query = new TextBox
         {
-            Height = 30,
-            MinHeight = 30,
-            Padding = new Thickness(8, 5),
+            Height = FieldHeight,
+            MinHeight = FieldHeight,
+            Padding = new Thickness(Spacing.S, Spacing.XS),
             PlaceholderText = "Search",
             FontFamily = Typography.Code,
             VerticalContentAlignment = VerticalAlignment.Center,
@@ -48,9 +50,9 @@ public sealed class SearchView : DockPanel
 
         var replacement = new TextBox
         {
-            Height = 30,
-            MinHeight = 30,
-            Padding = new Thickness(8, 5),
+            Height = FieldHeight,
+            MinHeight = FieldHeight,
+            Padding = new Thickness(Spacing.S, Spacing.XS),
             PlaceholderText = "Replace",
             FontFamily = Typography.Code,
             VerticalContentAlignment = VerticalAlignment.Center,
@@ -120,7 +122,7 @@ public sealed class SearchView : DockPanel
             }
         };
 
-        Children.Add(SideBarHeader.Create("SEARCH",
+        Children.Add(SideBarHeader.Create("Search",
             new FlatButton(Icons.Close, "Clear Search Results") { Command = new RelayCommand(search.Clear) }).Dock(Dock.Top));
         Children.Add(fields.Dock(Dock.Top));
         Children.Add(summary.Dock(Dock.Top));
@@ -144,14 +146,8 @@ public sealed class SearchView : DockPanel
     {
         var chevron = Chevron.For(file, x => x.IsExpanded);
 
-        var count = new Border
-        {
-            Background = Palette.Hover,
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(6, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock { Text = file.MatchCount.ToString(System.Globalization.CultureInfo.InvariantCulture), FontSize = Typography.CaptionSize, Foreground = Palette.TextSecondary },
-        };
+        var count = CountBadge(file.MatchCount);
+        count.Margin = new Thickness(Spacing.XS, 0, 0, 0);
 
         // A DockPanel (not a StackPanel) so the folder text gets the remaining width and can trim.
         return new DockPanel
@@ -163,12 +159,12 @@ public sealed class SearchView : DockPanel
                 count.Dock(Dock.Right),
                 chevron.Dock(Dock.Left),
                 FileIcons.File(file.FileName, margin: new Thickness(6, 0)).Dock(Dock.Left),
-                new TextBlock { Text = file.FileName, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center }.Dock(Dock.Left),
+                new TextBlock { Text = file.FileName, FontWeight = Typography.Strong, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis }.Dock(Dock.Left),
                 new TextBlock
                 {
                     Text = file.Folder,
                     FontSize = Typography.SmallSize,
-                    Foreground = Palette.TextMuted,
+                    Foreground = Palette.TextSecondary,
                     Margin = new Thickness(6, 0, Spacing.S, 0),
                     VerticalAlignment = VerticalAlignment.Center,
                     TextTrimming = TextTrimming.CharacterEllipsis,
@@ -176,6 +172,25 @@ public sealed class SearchView : DockPanel
             },
         };
     }
+
+    /// <summary>A count as a rounded pill.</summary>
+    private static Border CountBadge(int count) => new()
+    {
+        MinWidth = BadgeHeight,
+        Height = BadgeHeight,
+        Padding = new Thickness(5, 0),
+        CornerRadius = new CornerRadius(BadgeHeight / 2),
+        Background = Palette.Pressed,
+        VerticalAlignment = VerticalAlignment.Center,
+        Child = new TextBlock
+        {
+            Text = count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            FontSize = Typography.CaptionSize,
+            Foreground = Palette.TextSecondary,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        },
+    };
 
     /// <summary>
     /// The line preview. While replace is open, the match is struck through and the replacement is

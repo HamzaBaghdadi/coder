@@ -85,13 +85,13 @@ public sealed class ReferencesView : DockPanel
             {
                 FileIcons.File(file.Path),
                 new TextBlock { Text = file.FileName, VerticalAlignment = VerticalAlignment.Center },
-                new TextBlock { Text = file.Folder, FontSize = Typography.SmallSize, Foreground = Palette.TextMuted, VerticalAlignment = VerticalAlignment.Center },
+                new TextBlock { Text = file.Folder, FontSize = Typography.SmallSize, Foreground = Palette.TextSecondary, VerticalAlignment = VerticalAlignment.Center },
                 new Border
                 {
                     MinWidth = 18,
                     Height = 18,
                     Padding = new Thickness(5, 0),
-                    CornerRadius = new CornerRadius(9),
+                    CornerRadius = new CornerRadius(9), // a pill: half the height
                     Background = Palette.Pressed,
                     VerticalAlignment = VerticalAlignment.Center,
                     Child = new TextBlock
@@ -115,14 +115,14 @@ public sealed class ReferencesView : DockPanel
         var preview = new TextBlock
         {
             FontFamily = Typography.Code,
-            FontSize = 12.5,
+            FontSize = Typography.SmallSize,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
         var text = item.Preview;
         var (start, length) = (item.MatchStart, item.MatchLength);
         preview.Inlines!.Add(new Run(text[..start]) { Foreground = Palette.TextSecondary });
-        preview.Inlines.Add(new Run(text.Substring(start, length)) { Foreground = Palette.TextPrimary, Background = Palette.SearchMatch, FontWeight = FontWeight.SemiBold });
+        preview.Inlines.Add(new Run(text.Substring(start, length)) { Foreground = Palette.TextPrimary, Background = Palette.SearchMatch, FontWeight = Typography.Strong });
         preview.Inlines.Add(new Run(text[(start + length)..]) { Foreground = Palette.TextSecondary });
 
         return new DockPanel
@@ -136,7 +136,7 @@ public sealed class ReferencesView : DockPanel
                     Text = item.LineNumber.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     MinWidth = 36,
                     FontSize = Typography.SmallSize,
-                    Foreground = Palette.TextMuted,
+                    Foreground = Palette.TextSecondary,
                     VerticalAlignment = VerticalAlignment.Center,
                 }.Dock(Dock.Left),
                 preview,

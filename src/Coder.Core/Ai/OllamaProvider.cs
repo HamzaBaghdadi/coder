@@ -266,10 +266,19 @@ public sealed class OllamaProvider(HttpClient http, AiProviderConfig config, str
             writer.WriteEndArray();
         }
 
-        if (chat.Temperature is { } temperature)
+        if (chat.Temperature is not null || chat.MaxTokens is not null)
         {
             writer.WriteStartObject("options");
-            writer.WriteNumber("temperature", temperature);
+            if (chat.Temperature is { } temperature)
+            {
+                writer.WriteNumber("temperature", temperature);
+            }
+
+            if (chat.MaxTokens is { } maxTokens)
+            {
+                writer.WriteNumber("num_predict", maxTokens);
+            }
+
             writer.WriteEndObject();
         }
 

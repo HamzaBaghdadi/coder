@@ -24,7 +24,8 @@ public sealed class WindowsPseudoTerminal : IPseudoTerminal
     private readonly Thread _readThread;
     private int _disposed;
 
-    public WindowsPseudoTerminal(string commandLine, string workingDirectory, int columns, int rows)
+    /// <param name="environment">Variables added to (or replacing) Coder's own for this shell; null to inherit them as they are.</param>
+    public WindowsPseudoTerminal(string commandLine, string workingDirectory, int columns, int rows, IReadOnlyDictionary<string, string>? environment = null)
     {
         // Pipes: we write to inputWrite (the console reads inputRead); the console writes outputWrite (we read outputRead).
         Check(NativeMethods.CreatePipe(out var inputRead, out var inputWrite, IntPtr.Zero, 0));
@@ -40,7 +41,7 @@ public sealed class WindowsPseudoTerminal : IPseudoTerminal
         inputRead.Dispose();
         outputWrite.Dispose();
 
-        _processHandle = StartProcess(commandLine, workingDirectory, _pseudoConsole);
+        _processHandle = StartProcess(commandLine, workingDirectory, _pseudoConsole, environment);
         _input = new FileStream(inputWrite, FileAccess.Write);
         _output = new FileStream(outputRead, FileAccess.Read);
 
@@ -128,12 +129,13 @@ public sealed class WindowsPseudoTerminal : IPseudoTerminal
         }
     }
 
-    private static SafeFileHandle StartProcess(string commandLine, string workingDirectory, IntPtr pseudoConsole)
+    private static SafeFileHandle StartProcess(string commandLine, string workingDirectory, IntPtr pseudoConsole, IReadOnlyDictionary<string, string>? environment)
     {
         // Attach the process to the pseudo-console through an extended startup attribute.
         var attributeListSize = IntPtr.Zero;
         _ = NativeMethods.InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref attributeListSize);
         var attributeList = Marshal.AllocHGlobal(attributeListSize);
+        var environmentBlock = environment is null ? IntPtr.Zero : Marshal.StringToHGlobalUni(EnvironmentBlock(environment));
         try
         {
             Check(NativeMethods.InitializeProcThreadAttributeList(attributeList, 1, 0, ref attributeListSize));
@@ -154,7 +156,7 @@ public sealed class WindowsPseudoTerminal : IPseudoTerminal
                 IntPtr.Zero,
                 false,
                 NativeMethods.ExtendedStartupInfoPresent | NativeMethods.CreateUnicodeEnvironment,
-                IntPtr.Zero,
+                environmentBlock,
                 Directory.Exists(workingDirectory) ? workingDirectory : null,
                 ref startup,
                 out var process));
@@ -166,7 +168,37 @@ public sealed class WindowsPseudoTerminal : IPseudoTerminal
         {
             NativeMethods.DeleteProcThreadAttributeList(attributeList);
             Marshal.FreeHGlobal(attributeList);
+            if (environmentBlock != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(environmentBlock);
+            }
         }
+    }
+
+    /// <summary>
+    /// Coder's environment with the extra variables, as CreateProcess wants it: "NAME=value\0" entries
+    /// sorted by name (case-insensitively, as Windows compares them), ended by one more "\0".
+    /// </summary>
+    internal static string EnvironmentBlock(IReadOnlyDictionary<string, string> extra)
+    {
+        var variables = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
+        {
+            variables[(string)entry.Key] = (string?)entry.Value ?? string.Empty;
+        }
+
+        foreach (var (name, value) in extra)
+        {
+            variables[name] = value;
+        }
+
+        var block = new System.Text.StringBuilder();
+        foreach (var (name, value) in variables)
+        {
+            block.Append(name).Append('=').Append(value).Append('\0');
+        }
+
+        return block.Append('\0').ToString(); // StringToHGlobalUni adds the final terminator
     }
 
     private static NativeMethods.Coord Size(int columns, int rows) =>

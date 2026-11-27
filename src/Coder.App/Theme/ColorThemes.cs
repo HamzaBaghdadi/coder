@@ -37,26 +37,27 @@ public sealed class ColorTheme(string id, string name, bool isDark, IReadOnlyDic
 }
 
 /// <summary>
-/// The built-in themes, both drawn from the logo's blues. Midnight Blue is near-black navy for long
-/// sessions; Daylight is its light counterpart for bright rooms. In both, body text keeps about 13:1
+/// The built-in themes. Obsidian (id "dark") is a soft, neutral black for long sessions: never pure
+/// #000, which makes light text glow; Daylight (id "light") is its light counterpart for bright rooms. In both, body text keeps about 13:1
 /// contrast and secondary text and syntax colors at least 4.5:1.
 /// </summary>
 public static class ColorThemes
 {
-    public static ColorTheme MidnightBlue { get; } = new("dark", "Midnight Blue", isDark: true, new Dictionary<string, string>
+    public static ColorTheme MidnightBlue { get; } = new("dark", "Obsidian", isDark: true, new Dictionary<string, string>
     {
         // Surfaces, from the window frame inwards.
-        ["Chrome"] = "#06080D", ["SideBar"] = "#090C13", ["EditorBackground"] = "#0C0F17", ["Elevated"] = "#121826", ["StatusBar"] = "#06080D",
-        ["Hover"] = "#151C2A", ["HoverClear"] = "#00151C2A", ["Pressed"] = "#1B2435", ["Selected"] = "#2F7BFF/0.16", ["SelectedInactive"] = "#FFFFFF/0.05",
-        ["Border"] = "#141A26", ["BorderStrong"] = "#212A3A", ["InputBorder"] = "#323E56",
-        ["TextPrimary"] = "#D5DBE5", ["TextSecondary"] = "#97A1B2", ["TextMuted"] = "#768197", ["TextOnAccent"] = "#FFFFFF",
-        ["Accent"] = "#3D8BFF", ["AccentHover"] = "#5AA2FF", ["AccentBright"] = "#5AC8FA", ["Danger"] = "#E5484D", ["Warning"] = "#D8A657", ["Modified"] = "#C8D0DC",
+        ["Chrome"] = "#0B0C0E", ["SideBar"] = "#0B0C0E", ["EditorBackground"] = "#111215", ["Elevated"] = "#181A1F", ["StatusBar"] = "#0B0C0E",
+        ["Hover"] = "#1A1C21", ["HoverClear"] = "#001A1C21", ["Pressed"] = "#22252B", ["Selected"] = "#4C8DFF/0.16", ["SelectedInactive"] = "#FFFFFF/0.06",
+        ["Border"] = "#1E2026", ["BorderStrong"] = "#2A2D35", ["InputBorder"] = "#3A3E48",
+        ["TextPrimary"] = "#E3E5EA", ["TextSecondary"] = "#A2A7B1", ["TextMuted"] = "#7D838E", ["TextOnAccent"] = "#FFFFFF",
+        ["Accent"] = "#4C8DFF", ["AccentHover"] = "#6AA6FF", ["AccentBright"] = "#5AC8FA", ["Danger"] = "#EF5B5F", ["Warning"] = "#E0AE5C", ["Modified"] = "#C9CDD5",
+        ["AccentFill"] = "#2F6FEB", ["AccentFillHover"] = "#2A64D8", ["FocusRing"] = "#4C8DFF/0.28",
 
         // Editor layers.
         ["CurrentLine"] = "#FFFFFF/0.03", ["TextSelection"] = "#2F7BFF/0.30", ["TextSelectionInactive"] = "#2F7BFF/0.15", ["Caret"] = "#5AC8FA",
-        ["IndentGuide"] = "#192030", ["BracketMatch"] = "#3D8BFF/0.16", ["BracketMatchBorder"] = "#3D8BFF/0.55",
+        ["IndentGuide"] = "#1F2228", ["BracketMatch"] = "#3D8BFF/0.16", ["BracketMatchBorder"] = "#3D8BFF/0.55",
         ["SearchMatch"] = "#D8A657/0.22", ["SearchMatchCurrent"] = "#D8A657/0.45", ["SearchMatchBorder"] = "#D8A657/0.75",
-        ["DiffRemoved"] = "#E5484D/0.28", ["DiffInserted"] = "#3DD68C/0.22", ["LineNumber"] = "#3E4758", ["LineNumberActive"] = "#B9C3D3",
+        ["DiffRemoved"] = "#E5484D/0.28", ["DiffInserted"] = "#3DD68C/0.22", ["LineNumber"] = "#4A505B", ["LineNumberActive"] = "#C9CDD5",
         ["DiagnosticError"] = "#F2555A", ["DiagnosticWarning"] = "#D8A657", ["DiagnosticInfo"] = "#3D8BFF", ["DiagnosticHint"] = "#97A1B2/0.6", ["LinkUnderline"] = "#5AC8FA",
 
         // Git: explorer names, Source Control letters, diffs and gutter markers.
@@ -65,11 +66,11 @@ public static class ColorThemes
         ["DiffFiller"] = "#FFFFFF/0.025", ["ChangeAdded"] = "#3DD68C/0.85", ["ChangeModified"] = "#3D8BFF/0.9", ["ChangeDeleted"] = "#E5484D/0.9",
         ["ConflictCurrentHeader"] = "#3DD68C/0.32", ["ConflictCurrent"] = "#3DD68C/0.12", ["ConflictIncomingHeader"] = "#3D8BFF/0.36", ["ConflictIncoming"] = "#3D8BFF/0.13", ["ConflictAncestor"] = "#FFFFFF/0.06",
         ["Graph0"] = "#3D8BFF", ["Graph1"] = "#3DD68C", ["Graph2"] = "#E2B86B", ["Graph3"] = "#C792EA", ["Graph4"] = "#56C8D8", ["Graph5"] = "#E5675F",
-        ["InlayHint"] = "#8A94A8", ["InlayHintBackground"] = "#FFFFFF/0.06",
+        ["InlayHint"] = "#8A94A8", ["InlayHintBackground"] = "#FFFFFF/0.06", ["InlineSuggestion"] = "#FFFFFF/0.40",
 
         // Overlays and the terminal cursor.
         ["Shadow"] = "#99000000", ["TerminalCursor"] = "#5AC8FA/0.55",
-        ["ScrollbarThumb"] = "#FFFFFF/0.13", ["ScrollbarThumbHover"] = "#FFFFFF/0.24", ["ScrollbarThumbActive"] = "#5AC8FA/0.45",
+        ["ScrollbarThumb"] = "#FFFFFF/0.12", ["ScrollbarThumbHover"] = "#FFFFFF/0.22", ["ScrollbarThumbActive"] = "#4C8DFF/0.55",
 
         // Completion item kinds.
         ["KindFunction"] = "#C084FC", ["KindField"] = "#60A5FA", ["KindVariable"] = "#7DD3FC", ["KindClass"] = "#FB923C", ["KindInterface"] = "#2DD4BF",
@@ -80,22 +81,23 @@ public static class ColorThemes
         ["Syntax.Comment"] = "#75829A", ["Syntax.Constant"] = "#D9A3BE", ["Syntax.Operator"] = "#A3ADBD", ["Syntax.Punctuation"] = "#8C96A8", ["Syntax.Preprocessor"] = "#E0C27A",
 
         // Terminal ANSI colors: readable on the dark background without neon glare.
-        ["Ansi0"] = "#1B2435", ["Ansi1"] = "#E5676B", ["Ansi2"] = "#4FCB8E", ["Ansi3"] = "#E2C27A", ["Ansi4"] = "#5B9DFF", ["Ansi5"] = "#B4A2F5", ["Ansi6"] = "#5FC9D9", ["Ansi7"] = "#C8D0DC",
+        ["Ansi0"] = "#22252B", ["Ansi1"] = "#E5676B", ["Ansi2"] = "#4FCB8E", ["Ansi3"] = "#E2C27A", ["Ansi4"] = "#5B9DFF", ["Ansi5"] = "#B4A2F5", ["Ansi6"] = "#5FC9D9", ["Ansi7"] = "#C8D0DC",
         ["Ansi8"] = "#4A5568", ["Ansi9"] = "#FF8A8E", ["Ansi10"] = "#6FE0A8", ["Ansi11"] = "#F0D492", ["Ansi12"] = "#82B6FF", ["Ansi13"] = "#CDBFFF", ["Ansi14"] = "#7FDDEB", ["Ansi15"] = "#F2F5FA",
     });
 
     public static ColorTheme Daylight { get; } = new("light", "Daylight", isDark: false, new Dictionary<string, string>
     {
-        ["Chrome"] = "#E9EDF3", ["SideBar"] = "#F1F4F8", ["EditorBackground"] = "#FBFCFE", ["Elevated"] = "#FFFFFF", ["StatusBar"] = "#E9EDF3",
-        ["Hover"] = "#E1E7F0", ["HoverClear"] = "#00E1E7F0", ["Pressed"] = "#D3DCE8", ["Selected"] = "#1F6FEB/0.14", ["SelectedInactive"] = "#000000/0.05",
-        ["Border"] = "#D9E0EA", ["BorderStrong"] = "#C5CEDB", ["InputBorder"] = "#A9B5C7",
-        ["TextPrimary"] = "#1A2332", ["TextSecondary"] = "#4A5567", ["TextMuted"] = "#5E6A7D", ["TextOnAccent"] = "#FFFFFF",
-        ["Accent"] = "#1A62D6", ["AccentHover"] = "#1553B8", ["AccentBright"] = "#0A78A8", ["Danger"] = "#CF222E", ["Warning"] = "#9A6700", ["Modified"] = "#4A5567",
+        ["Chrome"] = "#F3F4F6", ["SideBar"] = "#F3F4F6", ["EditorBackground"] = "#FFFFFF", ["Elevated"] = "#FFFFFF", ["StatusBar"] = "#F3F4F6",
+        ["Hover"] = "#E7E9ED", ["HoverClear"] = "#00E7E9ED", ["Pressed"] = "#DCDFE5", ["Selected"] = "#1F62D6/0.12", ["SelectedInactive"] = "#000000/0.05",
+        ["Border"] = "#E2E4E8", ["BorderStrong"] = "#D2D5DB", ["InputBorder"] = "#B9BEC7",
+        ["TextPrimary"] = "#1B1D22", ["TextSecondary"] = "#4D535E", ["TextMuted"] = "#5F6672", ["TextOnAccent"] = "#FFFFFF",
+        ["Accent"] = "#1F62D6", ["AccentHover"] = "#1A55BD", ["AccentBright"] = "#0A78A8", ["Danger"] = "#CF222E", ["Warning"] = "#9A6700", ["Modified"] = "#4D535E",
+        ["AccentFill"] = "#1F62D6", ["AccentFillHover"] = "#1A55BD", ["FocusRing"] = "#1F62D6/0.25",
 
         ["CurrentLine"] = "#000000/0.035", ["TextSelection"] = "#1F6FEB/0.22", ["TextSelectionInactive"] = "#1F6FEB/0.11", ["Caret"] = "#1F6FEB",
-        ["IndentGuide"] = "#E4E9F0", ["BracketMatch"] = "#1F6FEB/0.12", ["BracketMatchBorder"] = "#1F6FEB/0.5",
+        ["IndentGuide"] = "#E8EAEE", ["BracketMatch"] = "#1F6FEB/0.12", ["BracketMatchBorder"] = "#1F6FEB/0.5",
         ["SearchMatch"] = "#E3B341/0.35", ["SearchMatchCurrent"] = "#E3B341/0.65", ["SearchMatchBorder"] = "#9A6700/0.8",
-        ["DiffRemoved"] = "#CF222E/0.18", ["DiffInserted"] = "#1A7F37/0.16", ["LineNumber"] = "#A0AAB8", ["LineNumberActive"] = "#1A2332",
+        ["DiffRemoved"] = "#CF222E/0.18", ["DiffInserted"] = "#1A7F37/0.16", ["LineNumber"] = "#A3A8B1", ["LineNumberActive"] = "#1B1D22",
         ["DiagnosticError"] = "#CF222E", ["DiagnosticWarning"] = "#B07800", ["DiagnosticInfo"] = "#1F6FEB", ["DiagnosticHint"] = "#677387/0.6", ["LinkUnderline"] = "#0A78A8",
 
         ["GitModified"] = "#8A5C00", ["GitAdded"] = "#1A7F37", ["GitDeleted"] = "#CF222E", ["GitConflict"] = "#CF222E",
@@ -103,7 +105,7 @@ public static class ColorThemes
         ["DiffFiller"] = "#000000/0.03", ["ChangeAdded"] = "#2DA44E", ["ChangeModified"] = "#1F6FEB", ["ChangeDeleted"] = "#CF222E",
         ["ConflictCurrentHeader"] = "#1A7F37/0.22", ["ConflictCurrent"] = "#1A7F37/0.08", ["ConflictIncomingHeader"] = "#1F6FEB/0.24", ["ConflictIncoming"] = "#1F6FEB/0.09", ["ConflictAncestor"] = "#000000/0.05",
         ["Graph0"] = "#1F6FEB", ["Graph1"] = "#1A7F37", ["Graph2"] = "#9A6700", ["Graph3"] = "#8250DF", ["Graph4"] = "#0E7C86", ["Graph5"] = "#CF222E",
-        ["InlayHint"] = "#5E6A7D", ["InlayHintBackground"] = "#1A2332/0.06",
+        ["InlayHint"] = "#5E6A7D", ["InlayHintBackground"] = "#1A2332/0.06", ["InlineSuggestion"] = "#1A2332/0.45",
 
         ["Shadow"] = "#2E1A2332", ["TerminalCursor"] = "#1F6FEB/0.45",
         ["ScrollbarThumb"] = "#1A2332/0.18", ["ScrollbarThumbHover"] = "#1A2332/0.32", ["ScrollbarThumbActive"] = "#1A62D6/0.55",
@@ -129,13 +131,14 @@ public static class ColorThemes
         ["Border"] = "#6FC3DF", ["BorderStrong"] = "#6FC3DF", ["InputBorder"] = "#6FC3DF",
         ["TextPrimary"] = "#FFFFFF", ["TextSecondary"] = "#E6E6E6", ["TextMuted"] = "#C8C8C8",
         ["Accent"] = "#F38518", ["AccentHover"] = "#FFA94D", ["AccentBright"] = "#6FC3DF", ["Danger"] = "#F48771", ["Warning"] = "#FFD370", ["Modified"] = "#FFFFFF",
+        ["AccentFill"] = "#0E639C", ["AccentFillHover"] = "#1177BB", ["FocusRing"] = "#F38518/0.5",
         ["CurrentLine"] = "#FFFFFF/0.08", ["TextSelection"] = "#3794FF/0.55", ["TextSelectionInactive"] = "#3794FF/0.30", ["Caret"] = "#FFFFFF",
         ["IndentGuide"] = "#5A5A5A", ["BracketMatch"] = "#F38518/0.25", ["BracketMatchBorder"] = "#F38518",
         ["SearchMatch"] = "#F38518/0.25", ["SearchMatchCurrent"] = "#F38518/0.55", ["SearchMatchBorder"] = "#F38518",
         ["LineNumber"] = "#A6A6A6", ["LineNumberActive"] = "#F38518",
         ["Syntax.Keyword"] = "#569CD6", ["Syntax.Type"] = "#4EC9B0", ["Syntax.Function"] = "#DCDCAA", ["Syntax.String"] = "#CE9178", ["Syntax.Number"] = "#B5CEA8",
         ["Syntax.Comment"] = "#7CA668", ["Syntax.Constant"] = "#79B8FF", ["Syntax.Operator"] = "#FFFFFF", ["Syntax.Punctuation"] = "#FFFFFF", ["Syntax.Preprocessor"] = "#C586C0",
-        ["DiagnosticError"] = "#F48771", ["DiagnosticWarning"] = "#FFD370", ["DiagnosticInfo"] = "#6FC3DF", ["DiagnosticHint"] = "#C8C8C8", ["LinkUnderline"] = "#6FC3DF",
+        ["DiagnosticError"] = "#F48771", ["DiagnosticWarning"] = "#FFD370", ["DiagnosticInfo"] = "#6FC3DF", ["DiagnosticHint"] = "#C8C8C8", ["LinkUnderline"] = "#6FC3DF", ["InlineSuggestion"] = "#FFFFFF/0.60",
         ["GitModified"] = "#E2C08D", ["GitAdded"] = "#A1E3AD", ["GitDeleted"] = "#F48771", ["GitConflict"] = "#FF8A80",
         ["DiffRemoved"] = "#FF0000/0.45", ["DiffInserted"] = "#33FF2E/0.30", ["DiffRemovedLine"] = "#FF0000/0.22", ["DiffRemovedText"] = "#FF0000/0.50",
         ["DiffInsertedLine"] = "#33FF2E/0.16", ["DiffInsertedText"] = "#33FF2E/0.40", ["DiffFiller"] = "#FFFFFF/0.06",
@@ -153,13 +156,14 @@ public static class ColorThemes
         ["Border"] = "#0F4A85", ["BorderStrong"] = "#0F4A85", ["InputBorder"] = "#0F4A85",
         ["TextPrimary"] = "#000000", ["TextSecondary"] = "#1F1F1F", ["TextMuted"] = "#3D3D3D",
         ["Accent"] = "#0F4A85", ["AccentHover"] = "#1460AA", ["AccentBright"] = "#006BBD", ["Danger"] = "#B5200D", ["Warning"] = "#895503", ["Modified"] = "#000000",
+        ["AccentFill"] = "#0F4A85", ["AccentFillHover"] = "#1460AA", ["FocusRing"] = "#0F4A85/0.35",
         ["CurrentLine"] = "#000000/0.06", ["TextSelection"] = "#0F4A85/0.30", ["TextSelectionInactive"] = "#0F4A85/0.15", ["Caret"] = "#000000",
         ["IndentGuide"] = "#A5A5A5", ["BracketMatch"] = "#0F4A85/0.15", ["BracketMatchBorder"] = "#0F4A85",
         ["SearchMatch"] = "#B5200D/0.15", ["SearchMatchCurrent"] = "#B5200D/0.35", ["SearchMatchBorder"] = "#B5200D",
         ["LineNumber"] = "#505050", ["LineNumberActive"] = "#000000",
         ["Syntax.Keyword"] = "#0F4A85", ["Syntax.Type"] = "#185E73", ["Syntax.Function"] = "#5E2CBC", ["Syntax.String"] = "#A31515", ["Syntax.Number"] = "#096D48",
         ["Syntax.Comment"] = "#515151", ["Syntax.Constant"] = "#0F4A85", ["Syntax.Operator"] = "#000000", ["Syntax.Punctuation"] = "#000000", ["Syntax.Preprocessor"] = "#B5200D",
-        ["DiagnosticError"] = "#B5200D", ["DiagnosticWarning"] = "#895503", ["DiagnosticInfo"] = "#0F4A85", ["DiagnosticHint"] = "#3D3D3D", ["LinkUnderline"] = "#0F4A85",
+        ["DiagnosticError"] = "#B5200D", ["DiagnosticWarning"] = "#895503", ["DiagnosticInfo"] = "#0F4A85", ["DiagnosticHint"] = "#3D3D3D", ["LinkUnderline"] = "#0F4A85", ["InlineSuggestion"] = "#000000/0.60",
         ["GitModified"] = "#895503", ["GitAdded"] = "#374E06", ["GitDeleted"] = "#AD0707", ["GitConflict"] = "#AD0707",
         ["ChangeAdded"] = "#374E06", ["ChangeModified"] = "#0F4A85", ["ChangeDeleted"] = "#AD0707",
         ["Graph0"] = "#0F4A85", ["Graph1"] = "#374E06", ["Graph2"] = "#895503", ["Graph3"] = "#5E2CBC", ["Graph4"] = "#006BBD", ["Graph5"] = "#AD0707",

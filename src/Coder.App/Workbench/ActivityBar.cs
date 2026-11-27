@@ -19,8 +19,10 @@ namespace Coder.App.Workbench;
 public sealed class ActivityBar : Border
 {
     private const double CompactSize = 32; // lying across the side bar: a slim strip, like VS Code's
-    private const double CompactIcon = 18;
-    private const double UprightIcon = 22;
+    private const double CompactTile = 28;
+    private const double UprightTile = 36; // a rounded tile centered in the 48px bar
+    private const double CompactIcon = 17;
+    private const double UprightIcon = 20;
 
     private readonly StackPanel _items;
     private readonly List<Border> _indicators = [];
@@ -29,8 +31,7 @@ public sealed class ActivityBar : Border
 
     public ActivityBar(WorkbenchViewModel workbench)
     {
-        Background = Palette.Chrome;
-        BorderBrush = Palette.Border;
+        Background = Palette.Chrome; // part of the shell: no divider line
 
         _items = new StackPanel
         {
@@ -58,11 +59,7 @@ public sealed class ActivityBar : Border
         _items.Spacing = horizontal ? 2 : Spacing.XS;
         Width = horizontal ? double.NaN : Spacing.ActivityBarWidth;
         Height = horizontal ? CompactSize : double.NaN;
-        BorderThickness = horizontal
-            ? new Thickness(0, atBottom ? 1 : 0, 0, atBottom ? 0 : 1)
-            : new Thickness(onRight ? 1 : 0, 0, onRight ? 0 : 1, 0);
-
-        var size = horizontal ? CompactSize : Spacing.ActivityBarWidth;
+        var size = horizontal ? CompactTile : UprightTile;
         foreach (var button in _buttons)
         {
             button.Width = size;
@@ -73,18 +70,18 @@ public sealed class ActivityBar : Border
             }
         }
 
-        // The indicator marks the edge facing the side bar's content: the inner side, or under the item.
+        // The indicator is a short pill on the bar's outer edge (upright), or along the strip's edge (lying).
         foreach (var indicator in _indicators)
         {
-            indicator.Width = horizontal ? double.NaN : 2;
-            indicator.Height = horizontal ? 2 : double.NaN;
-            indicator.HorizontalAlignment = horizontal ? HorizontalAlignment.Stretch : onRight ? HorizontalAlignment.Right : HorizontalAlignment.Left;
-            indicator.VerticalAlignment = horizontal ? (atBottom ? VerticalAlignment.Top : VerticalAlignment.Bottom) : VerticalAlignment.Stretch;
-            indicator.Margin = horizontal ? new Thickness(9, 0) : new Thickness(0, 10);
+            indicator.Width = horizontal ? 14 : 3;
+            indicator.Height = horizontal ? 3 : 16;
+            indicator.HorizontalAlignment = horizontal ? HorizontalAlignment.Center : onRight ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            indicator.VerticalAlignment = horizontal ? (atBottom ? VerticalAlignment.Top : VerticalAlignment.Bottom) : VerticalAlignment.Center;
+            indicator.Margin = new Thickness(0);
             indicator.CornerRadius = new CornerRadius(2);
         }
 
-        _badge?.Margin = horizontal ? new Thickness(0, 1, 0, 0) : new Thickness(0, 0, 7, 8);
+        _badge?.Margin = horizontal ? new Thickness(0, 1, 0, 0) : new Thickness(0, 0, 4, 0);
         if (_badge is not null)
         {
             _badge.VerticalAlignment = horizontal ? VerticalAlignment.Top : VerticalAlignment.Bottom; // in a slim strip, up by the corner
@@ -100,7 +97,7 @@ public sealed class ActivityBar : Border
             .BindClass("active", workbench, IsActive);
         var indicator = new Border
         {
-            Background = Brand.Gradient,
+            Background = Palette.Accent,
             IsHitTestVisible = false,
         };
         _indicators.Add(indicator);
@@ -120,14 +117,16 @@ public sealed class ActivityBar : Border
             Height = 16,
             Padding = new Thickness(4, 0),
             CornerRadius = new CornerRadius(8),
-            Background = Brand.ButtonGradient,
+            Background = Palette.AccentFill,
+            BorderBrush = Palette.Chrome, // a ring in the bar's color lifts the badge off the icon
+            BorderThickness = new Thickness(1.5),
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Bottom,
             IsHitTestVisible = false,
             Child = new TextBlock
             {
                 FontSize = 10,
-                FontWeight = FontWeight.SemiBold,
+                FontWeight = Typography.Strong,
                 Foreground = Palette.TextOnAccent,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -140,9 +139,11 @@ public sealed class ActivityBar : Border
 
     private FlatButton Item(Geometry icon, string name, System.Windows.Input.ICommand command)
     {
-        var button = new FlatButton(icon, name, iconSize: 22)
+        var button = new FlatButton(icon, name, iconSize: UprightIcon)
         {
-            Chamfer = 0, // full-size tiles in the bar, like the window buttons
+            Radius = Spacing.RadiusPanel.TopLeft,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Classes = { "activity" },
             Command = command,
         };
         _buttons.Add(button);

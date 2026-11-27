@@ -25,11 +25,17 @@ public sealed class EditorArea : Panel
         _editor = new CodeEditor()
             .Bind(CodeEditor.TabProperty, editors, x => x.ActiveEditor)
             .Bind(CodeEditor.EditorFontSizeProperty, workbench, x => x.EditorFontSize)
+            .Bind(CodeEditor.EditorFontFamilyProperty, workbench, x => x.EditorFontFamily)
+            .Bind(CodeEditor.EditorLineHeightProperty, workbench, x => x.EditorLineHeight)
+            .Bind(CodeEditor.CursorStyleProperty, workbench, x => x.CursorStyle)
+            .Bind(CodeEditor.CursorBlinkingProperty, workbench, x => x.CursorBlinking)
             .Bind(CodeEditor.ShowMinimapProperty, workbench, x => x.IsMinimapVisible)
             .Bind(CodeEditor.MinimapRenderCharactersProperty, workbench, x => x.MinimapRendersCharacters)
+            .Bind(CodeEditor.StickyScrollProperty, workbench.StickyScroll, x => x.IsEnabled)
             .Bind(CodeEditor.SearchMatchesProperty, workbench.Find, x => x.Matches)
             .Bind(CodeEditor.CurrentSearchMatchProperty, workbench.Find, x => x.CurrentIndex);
         _editor.SetBlame(workbench.SourceControl.Blame);
+        _editor.SetInlineSuggestions(workbench.InlineSuggestions);
         _editor.SetDefinitionSupport(tab => workbench.Languages.Supports(tab, c => c.HasDefinition));
 
         var images = new ImageViewer()
@@ -129,7 +135,7 @@ public sealed class EditorArea : Panel
         return new Border
         {
             Height = 24,
-            Padding = new Thickness(Spacing.L, 0),
+            Padding = new Thickness(Spacing.M + Spacing.XXS, 0), // lines up with the tab titles above
             Background = Palette.EditorBackground,
             Child = new StackPanel
             {

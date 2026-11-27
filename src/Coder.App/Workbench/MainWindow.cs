@@ -20,7 +20,6 @@ public sealed class MainWindow : Window
 {
     private const double SideBarMinWidth = 170;
     private const double TerminalPanelHeight = 280;
-    private const double SecondarySideBarWidth = 380;
 
     private readonly WorkbenchViewModel _workbench;
     private readonly KeyBindingRouter _keyBindings;
@@ -38,6 +37,7 @@ public sealed class MainWindow : Window
         _editorArea = new EditorArea(workbench);
         _sideBarWidth = Math.Max(SideBarMinWidth, workbench.Settings.SideBarWidth);
         _sideBarColumn = new ColumnDefinition(_sideBarWidth, GridUnitType.Pixel) { MinWidth = SideBarMinWidth };
+        workbench.CodeFonts = Typography.InstalledCodeFonts(); // the Font Family setting's choices
 
         MinWidth = 640;
         MinHeight = 400;
@@ -69,6 +69,7 @@ public sealed class MainWindow : Window
         };
 
         workbench.Palette.Closed += (_, _) => _editorArea.FocusEditor();
+        Deactivated += async (_, _) => await workbench.OnWindowDeactivatedAsync(); // "On focus change" auto save
 
         // Custom-drawn views (editor, diff, terminal, lists) paint with the theme's brushes when they
         // render, so a theme switch repaints them.
@@ -101,12 +102,12 @@ public sealed class MainWindow : Window
     /// </summary>
     private Grid Body()
     {
-        var splitter = new GridSplitter { Width = 2, ResizeDirection = GridResizeDirection.Columns };
+        var splitter = new GridSplitter { Width = Spacing.PanelGap, ResizeDirection = GridResizeDirection.Columns };
         var sideBar = new SideBar(_workbench); // hidden, not just zero-width: a collapsed column does not clip its content
         var activityBar = new ActivityBar(_workbench);
         var primary = new DockPanel { Children = { sideBar } };
         var secondaryColumn = new ColumnDefinition(0, GridUnitType.Pixel);
-        var secondarySplitter = new GridSplitter { Width = 2, ResizeDirection = GridResizeDirection.Columns, IsVisible = false };
+        var secondarySplitter = new GridSplitter { Width = Spacing.PanelGap, ResizeDirection = GridResizeDirection.Columns, IsVisible = false };
         var secondary = new SecondarySideBar(_workbench) { IsVisible = false };
         var outerLeft = new ColumnDefinition(GridLength.Auto);
         var outerRight = new ColumnDefinition(GridLength.Auto);
@@ -139,8 +140,9 @@ public sealed class MainWindow : Window
             Grid.SetColumn(splitter, right ? 4 : 2);
             Grid.SetColumn(secondary, right ? 1 : 5);
             Grid.SetColumn(secondarySplitter, right ? 2 : 4);
-            sideBar.BorderThickness = right ? new Thickness(1, 0, 0, 0) : new Thickness(0, 0, 1, 0);
-            secondary.BorderThickness = right ? new Thickness(0, 0, 1, 0) : new Thickness(1, 0, 0, 0);
+            // The inset panels keep a gap from the window edge on the secondary side bar's side (the primary
+            // side bar is shell-colored, so it needs none) and above the status bar.
+            grid.Margin = right ? new Thickness(Spacing.PanelGap, 0, 0, Spacing.PanelGap) : new Thickness(0, 0, Spacing.PanelGap, Spacing.PanelGap);
 
             // The activity bar: on the outer edge beside the side bar, or across its top or bottom.
             (activityBar.Parent as Panel)?.Children.Remove(activityBar);
@@ -160,7 +162,7 @@ public sealed class MainWindow : Window
         Arrange();
 
         // The secondary side bar, hidden until toggled, keeping the user's width.
-        var secondaryWidth = SecondarySideBarWidth;
+        var secondaryWidth = _workbench.SecondarySideBarDefaultWidth; // from settings
         void ApplySecondaryVisibility()
         {
             var visible = _workbench.IsSecondarySideBarVisible;
@@ -195,7 +197,7 @@ public sealed class MainWindow : Window
 
         // Double-clicking a divider puts it back where it started (the side bar: its width from settings).
         splitter.DoubleTapped += (_, _) => _sideBarColumn.Width = new GridLength(_sideBarWidth = Math.Max(SideBarMinWidth, _workbench.Settings.SideBarDefaultWidth));
-        secondarySplitter.DoubleTapped += (_, _) => secondaryColumn.Width = new GridLength(secondaryWidth = SecondarySideBarWidth);
+        secondarySplitter.DoubleTapped += (_, _) => secondaryColumn.Width = new GridLength(secondaryWidth = _workbench.SecondarySideBarDefaultWidth);
 
         _workbench.PropertyChanged += (_, e) =>
         {
@@ -220,14 +222,14 @@ public sealed class MainWindow : Window
     private Grid EditorAndPanel()
     {
         var panelRow = new RowDefinition(0, GridUnitType.Pixel);
-        var splitter = new GridSplitter { Height = 2, ResizeDirection = GridResizeDirection.Rows, IsVisible = false };
-        var panel = new BottomPanel(_workbench) { IsVisible = false }; // a zero-height row does not clip, so hide it
+        var splitter = new GridSplitter { Height = Spacing.PanelGap, ResizeDirection = GridResizeDirection.Rows, IsVisible = false };
+        var panel = new Border { Classes = { "panel" }, Child = new BottomPanel(_workbench), IsVisible = false }; // a zero-height row does not clip, so hide it
         var grid = new Grid
         {
             RowDefinitions = { new RowDefinition(1, GridUnitType.Star) { MinHeight = 120 }, new RowDefinition(GridLength.Auto), panelRow },
             Children =
             {
-                _editorArea.Row(0),
+                new Border { Classes = { "panel" }, Child = _editorArea }.Row(0),
                 splitter.Row(1),
                 panel.Row(2),
             },
@@ -318,6 +320,12 @@ public sealed class MainWindow : Window
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
+        // An in-app modal (a confirmation) owns the keyboard until it is answered.
+        if (Services.Modal.IsOpen)
+        {
+            return;
+        }
+
         // Inside a terminal (its view or its find bar), keys belong to the terminal except a few app shortcuts.
         var focused = FocusManager?.GetFocusedElement() as Visual;
         var terminalHasFocus = focused?.FindAncestorOfType<Terminal.TerminalPane>(includeSelf: true) is not null;

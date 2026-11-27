@@ -33,6 +33,8 @@ public static class VsCodeThemeConverter
         ["Accent"] = ["focusBorder", "button.background", "textLink.foreground"],
         ["AccentHover"] = ["button.hoverBackground", "textLink.activeForeground"],
         ["AccentBright"] = ["textLink.foreground", "editorCursor.foreground"],
+        ["AccentFill"] = ["button.background", "focusBorder"],
+        ["AccentFillHover"] = ["button.hoverBackground", "button.background"],
         ["Danger"] = ["errorForeground", "editorError.foreground"],
         ["Warning"] = ["editorWarning.foreground"],
         ["Modified"] = ["tab.activeForeground", "foreground"],
@@ -57,6 +59,7 @@ public static class VsCodeThemeConverter
         ["LinkUnderline"] = ["textLink.foreground"],
         ["InlayHint"] = ["editorInlayHint.foreground"],
         ["InlayHintBackground"] = ["editorInlayHint.background"],
+        ["InlineSuggestion"] = ["editorGhostText.foreground"],
         ["GitModified"] = ["gitDecoration.modifiedResourceForeground"],
         ["GitAdded"] = ["gitDecoration.untrackedResourceForeground", "gitDecoration.addedResourceForeground"],
         ["GitDeleted"] = ["gitDecoration.deletedResourceForeground"],
@@ -161,6 +164,12 @@ public static class VsCodeThemeConverter
             {
                 overrides.TryAdd(surface, background);
             }
+        }
+
+        // The focus halo is the theme's accent, faint.
+        if (overrides.TryGetValue("Accent", out var accent) && accent.StartsWith('#') && accent.Length is 7 or 9)
+        {
+            overrides["FocusRing"] = $"{accent[..7]}/0.28"; // VS Code writes #RRGGBB or #RRGGBBAA
         }
 
         var wash = entry.IsDark ? "#FFFFFF" : "#000000";

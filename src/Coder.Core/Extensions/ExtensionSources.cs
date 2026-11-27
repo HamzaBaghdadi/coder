@@ -112,9 +112,15 @@ public sealed class CoderRegistrySource(HttpClient http, string indexUrl) : IExt
             throw new ExtensionException($"The extension registry at {indexUrl} couldn't be read.", exception);
         }
 
-        return (index?.Extensions ?? [])
-            .Where(e => e.Publisher is { Length: > 0 } && e.Name is { Length: > 0 } && e.Download is { Length: > 0 })
-            .Select(e => new ExtensionListing(
+        var listings = new List<ExtensionListing>();
+        foreach (var e in index?.Extensions ?? [])
+        {
+            if (e.Publisher is not { Length: > 0 } || e.Name is not { Length: > 0 } || Package(e) is not var (download, sha256))
+            {
+                continue; // incomplete, or (a program extension) not built for this machine
+            }
+
+            listings.Add(new ExtensionListing(
                 $"{e.Publisher}.{e.Name}",
                 e.DisplayName is { Length: > 0 } display ? display : e.Name!,
                 e.Publisher!,
@@ -123,11 +129,32 @@ public sealed class CoderRegistrySource(HttpClient http, string indexUrl) : IExt
                 e.Downloads,
                 e.Verified,
                 e.Icon,
-                Resolve(e.Download!),
-                e.Sha256,
+                Resolve(download),
+                sha256,
                 null,
-                Name))
-            .ToList();
+                Name)
+            {
+                RunsProgram = e.Program,
+            });
+        }
+
+        return listings;
+    }
+
+    /// <summary>
+    /// The package for this machine: from <c>platforms</c> (a program is built per platform) when the entry
+    /// has them, else the entry's own <c>download</c>; null when there is none for this platform.
+    /// </summary>
+    private static (string Download, string? Sha256)? Package(RegistryEntry entry)
+    {
+        if (entry.Platforms is { Count: > 0 } platforms)
+        {
+            return platforms.FirstOrDefault(p => string.Equals(p.Key, Platform.RuntimeId, StringComparison.OrdinalIgnoreCase)).Value is { Download: { Length: > 0 } download } package
+                ? (download, package.Sha256)
+                : null;
+        }
+
+        return entry.Download is { Length: > 0 } single ? (single, entry.Sha256) : null;
     }
 
     /// <summary>Package addresses may be relative to the index.</summary>
@@ -199,6 +226,19 @@ internal sealed class RegistryEntry
     public long Downloads { get; set; }
 
     public bool Verified { get; set; }
+
+    /// <summary>The package includes a program (the registry requires such entries to be verified).</summary>
+    public bool Program { get; set; }
+
+    /// <summary>Per-platform packages by runtime id ("win-x64"), for extensions with a program.</summary>
+    public Dictionary<string, RegistryPackage>? Platforms { get; set; }
+}
+
+internal sealed class RegistryPackage
+{
+    public string? Download { get; set; }
+
+    public string? Sha256 { get; set; }
 }
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true)]

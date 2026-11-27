@@ -18,9 +18,7 @@ public sealed class SecondarySideBar : Border
 {
     public SecondarySideBar(WorkbenchViewModel workbench)
     {
-        Background = Palette.SideBar;
-        BorderBrush = Palette.Border;
-        BorderThickness = new Thickness(1, 0, 0, 0);
+        Classes.Add("panel"); // an inset, rounded panel on the shell, like the editors
         Show(workbench);
         workbench.PropertyChanged += (_, e) =>
         {
@@ -50,7 +48,7 @@ public sealed class SecondarySideBar : Border
         {
             Children =
             {
-                SideBarHeader.Create("SECONDARY SIDE BAR").Dock(Dock.Top),
+                SideBarHeader.Create("Secondary side bar").Dock(Dock.Top),
                 new StackPanel
                 {
                     Spacing = Spacing.S,

@@ -182,6 +182,8 @@ public sealed partial class WorkbenchUiTests
 
         public void Move(string from, string to, bool overwrite) => _disk.Move(from, to, overwrite);
 
+        public void Copy(string from, string to) => _disk.Copy(from, to);
+
         public void Delete(string path, bool recursive) => _disk.Delete(path, recursive);
 
         public void CreateDirectory(string path) => _disk.CreateDirectory(path);

@@ -20,6 +20,18 @@ public sealed class CodeEditor : ScrollViewer
     public static readonly StyledProperty<double> EditorFontSizeProperty =
         EditorView.EditorFontSizeProperty.AddOwner<CodeEditor>();
 
+    public static readonly StyledProperty<string> EditorFontFamilyProperty =
+        EditorView.EditorFontFamilyProperty.AddOwner<CodeEditor>();
+
+    public static readonly StyledProperty<double> EditorLineHeightProperty =
+        EditorView.EditorLineHeightProperty.AddOwner<CodeEditor>();
+
+    public static readonly StyledProperty<string> CursorStyleProperty =
+        EditorView.CursorStyleProperty.AddOwner<CodeEditor>();
+
+    public static readonly StyledProperty<bool> CursorBlinkingProperty =
+        EditorView.CursorBlinkingProperty.AddOwner<CodeEditor>();
+
     public static readonly StyledProperty<IReadOnlyList<SearchMatch>> SearchMatchesProperty =
         AvaloniaProperty.Register<CodeEditor, IReadOnlyList<SearchMatch>>(nameof(SearchMatches), []);
 
@@ -28,6 +40,9 @@ public sealed class CodeEditor : ScrollViewer
 
     public static readonly StyledProperty<bool> MinimapRenderCharactersProperty =
         AvaloniaProperty.Register<CodeEditor, bool>(nameof(MinimapRenderCharacters));
+
+    public static readonly StyledProperty<bool> StickyScrollProperty =
+        AvaloniaProperty.Register<CodeEditor, bool>(nameof(StickyScroll), true);
 
     public static readonly StyledProperty<int> CurrentSearchMatchProperty =
         AvaloniaProperty.Register<CodeEditor, int>(nameof(CurrentSearchMatch), -1);
@@ -42,6 +57,10 @@ public sealed class CodeEditor : ScrollViewer
         HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         _view.Bind(EditorView.EditorFontSizeProperty, this.GetObservable(EditorFontSizeProperty));
+        _view.Bind(EditorView.EditorFontFamilyProperty, this.GetObservable(EditorFontFamilyProperty));
+        _view.Bind(EditorView.EditorLineHeightProperty, this.GetObservable(EditorLineHeightProperty));
+        _view.Bind(EditorView.CursorStyleProperty, this.GetObservable(CursorStyleProperty));
+        _view.Bind(EditorView.CursorBlinkingProperty, this.GetObservable(CursorBlinkingProperty));
         _view.Scrolled += (_, offset) =>
         {
             if (_view.Editor is { } editor)
@@ -139,6 +158,7 @@ public sealed class CodeEditor : ScrollViewer
             var offset = tab is not null && _scrollPositions.TryGetValue(tab.Editor, out var box) ? box.Value : default;
             _view.Attach(tab?.Editor, tab?.Highlighter, offset);
             AttachDiagnostics(tab);
+            _view.InlineSuggestionChanged();
         }
         else if (change.Property == ShowMinimapProperty)
         {
@@ -147,6 +167,10 @@ public sealed class CodeEditor : ScrollViewer
         else if (change.Property == MinimapRenderCharactersProperty)
         {
             _view.MinimapRenderCharacters = MinimapRenderCharacters;
+        }
+        else if (change.Property == StickyScrollProperty)
+        {
+            _view.StickyScroll = StickyScroll;
         }
         else if (change.Property == SearchMatchesProperty || change.Property == CurrentSearchMatchProperty)
         {
@@ -161,6 +185,7 @@ public sealed class CodeEditor : ScrollViewer
             _attachedTab.DiagnosticsChanged -= OnDiagnosticsChanged;
             _attachedTab.LineChangesChanged -= OnDiagnosticsChanged;
             _attachedTab.InlayHintsChanged -= OnInlayHintsChanged;
+            _attachedTab.SymbolScopesChanged -= OnSymbolScopesChanged;
         }
 
         _attachedTab = tab;
@@ -169,7 +194,10 @@ public sealed class CodeEditor : ScrollViewer
             tab.DiagnosticsChanged += OnDiagnosticsChanged;
             tab.LineChangesChanged += OnDiagnosticsChanged;
             tab.InlayHintsChanged += OnInlayHintsChanged;
+            tab.SymbolScopesChanged += OnSymbolScopesChanged;
         }
+
+        _view.SetSymbolScopesSource(tab is null ? () => [] : () => tab.SymbolScopes);
 
         _view.SetDiagnosticsSource(tab is null ? () => [] : () => tab.Diagnostics);
         _view.SetLineChangesSource(tab is null ? () => [] : () => tab.LineChanges);
@@ -183,6 +211,19 @@ public sealed class CodeEditor : ScrollViewer
         blame.Changed += (_, _) => _view.InvalidateVisual();
         _view.SetBlameSource(line => Tab is { } tab ? blame.Annotation(tab, line) : null);
     }
+
+    /// <summary>Shows AI inline suggestions (ghost text) after the caret; repaints when they change.</summary>
+    public void SetInlineSuggestions(Coder.Presentation.Agent.InlineSuggestionsViewModel suggestions)
+    {
+        suggestions.Changed += (_, _) => _view.InlineSuggestionChanged();
+
+        // The debounce runs on the UI dispatcher, so nothing is posted to the UI thread from a background thread.
+        suggestions.UseScheduler((delay, action) => Avalonia.Threading.DispatcherTimer.RunOnce(action, delay, Avalonia.Threading.DispatcherPriority.Background));
+        _view.SetInlineSuggestionSource(() => suggestions.SuggestionFor(Tab) is { } s ? (s.Offset, s.Text) : null);
+    }
+
+    /// <summary>For tests: the inline suggestion drawn now, if any.</summary>
+    internal string? ShownInlineSuggestion => _view.ShownInlineSuggestion;
 
     /// <summary>The code in miniature on the right edge.</summary>
     public bool ShowMinimap
@@ -206,6 +247,15 @@ public sealed class CodeEditor : ScrollViewer
     internal EditorView View => _view;
 
     private void OnInlayHintsChanged(object? sender, EventArgs e) => _view.InlayHintsChanged();
+
+    private void OnSymbolScopesChanged(object? sender, EventArgs e) => _view.SymbolScopesChanged();
+
+    /// <summary>Block headers (class, method, if…) stay pinned at the top while scrolling.</summary>
+    public bool StickyScroll
+    {
+        get => GetValue(StickyScrollProperty);
+        set => SetValue(StickyScrollProperty, value);
+    }
 
     /// <summary>Diagnostics or gutter change markers were updated: repaint.</summary>
     private void OnDiagnosticsChanged(object? sender, EventArgs e) => _view.InvalidateVisual();

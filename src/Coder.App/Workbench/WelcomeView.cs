@@ -38,23 +38,24 @@ public sealed class WelcomeView : Border
             {
                 new StackPanel
                 {
-                    Spacing = Spacing.M,
+                    Spacing = Spacing.XS,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     Children =
                     {
-                        GlowingLogo(96),
+                        GlowingLogo(88),
                         new TextBlock
                         {
                             Text = "Coder",
-                            FontSize = 30,
-                            FontWeight = FontWeight.SemiBold,
+                            FontSize = Typography.DisplaySize,
+                            FontWeight = Typography.Strong,
+                            Foreground = Palette.TextPrimary,
+                            Margin = new Thickness(0, Spacing.L, 0, 0),
                             HorizontalAlignment = HorizontalAlignment.Center,
                         },
                         new TextBlock
                         {
                             Text = "Fast, focused code editing.",
-                            Foreground = Palette.TextSecondary,
-                            FontSize = 14,
+                            Classes = { "secondary" },
                             HorizontalAlignment = HorizontalAlignment.Center,
                         },
                     },
@@ -64,8 +65,13 @@ public sealed class WelcomeView : Border
             },
         };
 
-        // The logo tile's faint diagonal light bands, layered behind the content.
-        Child = new Panel { Children = { new Border { Background = Brand.DiagonalSheen }, content } };
+        // The logo tile's faint diagonal light bands, layered behind the content. Dark themes only: the bands
+        // are navy light, which on a light surface reads as gray smudges.
+        var sheen = new Border { Background = Brand.DiagonalSheen, IsVisible = Palette.Current.IsDark };
+        EventHandler follow = (_, _) => sheen.IsVisible = Palette.Current.IsDark;
+        AttachedToVisualTree += (_, _) => { ThemeManager.Changed += follow; follow(null, EventArgs.Empty); };
+        DetachedFromVisualTree += (_, _) => ThemeManager.Changed -= follow;
+        Child = new Panel { Children = { sheen, content } };
     }
 
     /// <summary>The logo with a soft blue glow, echoing the lit edge of its tile.</summary>
@@ -90,18 +96,15 @@ public sealed class WelcomeView : Border
 
         var section = new StackPanel
         {
-            Width = 380,
+            Width = 400,
             Spacing = Spacing.XS,
             Children =
             {
                 new TextBlock
                 {
-                    Text = "RECENT",
-                    FontSize = Typography.CaptionSize,
-                    FontWeight = FontWeight.SemiBold,
-                    LetterSpacing = 0.6,
-                    Foreground = Palette.TextMuted,
-                    Margin = new Thickness(Spacing.M, 0),
+                    Text = "Recent",
+                    Classes = { "section-title" },
+                    Margin = new Thickness(Spacing.M, 0, Spacing.M, Spacing.XXS),
                 },
                 list,
             },
@@ -120,23 +123,24 @@ public sealed class WelcomeView : Border
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             Padding = new Thickness(Spacing.M, 6),
+            Foreground = Palette.TextPrimary,
             Command = new RelayCommand(() => workbench.OpenFolder(path)),
             Content = new DockPanel
             {
                 Children =
                 {
-                    new Icon(Icons.Folder, 15) { Margin = new Thickness(0, 0, Spacing.S, 0) }.Dock(Dock.Left),
+                    new Icon(Icons.Folder, 15) { Foreground = Palette.TextSecondary, Margin = new Thickness(0, 0, Spacing.S, 0) }.Dock(Dock.Left),
                     new TextBlock
                     {
                         Text = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar)),
-                        Foreground = Palette.Accent,
+                        Foreground = Palette.TextPrimary,
                         VerticalAlignment = VerticalAlignment.Center,
                     }.Dock(Dock.Left),
                     new TextBlock
                     {
                         Text = Path.GetDirectoryName(path.TrimEnd(Path.DirectorySeparatorChar)) ?? string.Empty,
                         FontSize = Typography.SmallSize,
-                        Foreground = Palette.TextMuted,
+                        Foreground = Palette.TextSecondary,
                         Margin = new Thickness(Spacing.S, 0, 0, 0),
                         VerticalAlignment = VerticalAlignment.Center,
                         TextTrimming = TextTrimming.LeadingCharacterEllipsis,
@@ -156,13 +160,14 @@ public sealed class WelcomeView : Border
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             Padding = new Thickness(Spacing.M, Spacing.S),
+            Foreground = Palette.TextPrimary,
             Command = workbench.Commands.ToCommand(command.Id),
             Content = new DockPanel
             {
                 Children =
                 {
                     KeyHint(command.KeyBinding).Dock(Dock.Right),
-                    new TextBlock { Text = command.Title.TrimEnd('…'), FontSize = 14, VerticalAlignment = VerticalAlignment.Center },
+                    new TextBlock { Text = command.Title.TrimEnd('…'), VerticalAlignment = VerticalAlignment.Center },
                 },
             },
         };
@@ -170,18 +175,25 @@ public sealed class WelcomeView : Border
         return button;
     }
 
-    /// <summary>Renders "Ctrl+Shift+P" as separate key caps.</summary>
+    /// <summary>Renders "Ctrl+Shift+P" as separate key caps (the shared <c>kbd</c> class).</summary>
     internal static Control KeyHint(string? gesture)
     {
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Spacing.XS, VerticalAlignment = VerticalAlignment.Center };
         foreach (var key in (gesture ?? string.Empty).Split('+', StringSplitOptions.RemoveEmptyEntries))
         {
-            panel.Children.Add(new ChamferBorder
+            panel.Children.Add(new Border
             {
-                Background = Palette.Pressed,
-                Chamfer = Spacing.ChamferSmall,
-                Padding = new Thickness(6, 2),
-                Child = new TextBlock { Text = KeyLabel(key), FontSize = Typography.CaptionSize, Foreground = Palette.TextSecondary },
+                Classes = { "kbd" },
+                MinWidth = 20,
+                Height = 20,
+                Child = new TextBlock
+                {
+                    Text = KeyLabel(key),
+                    FontSize = Typography.CaptionSize,
+                    Foreground = Palette.TextSecondary,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                },
             });
         }
 
@@ -194,6 +206,8 @@ public sealed class WelcomeView : Border
         "OemMinus" => "-",
         "D0" => "0",
         "OemTilde" => "`",
+        "OemPeriod" => ".",
+        "OemComma" => ",",
         _ => key,
     };
 }

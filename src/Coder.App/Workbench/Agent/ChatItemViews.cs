@@ -45,15 +45,18 @@ public static class ChatItemViews
             content.Children.Add(chips);
         }
 
-        return new ChamferBorder
+        // A right-aligned bubble; the smaller bottom-right corner points at its sender.
+        var radius = Spacing.RadiusLarge.TopLeft;
+        return new Border
         {
             Classes = { "chat-user" },
             Background = Palette.Elevated,
-            BorderBrush = Palette.Border,
-            BorderThickness = 1,
-            Chamfer = Spacing.ChamferSmall,
+            BorderBrush = Palette.BorderStrong,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(radius, radius, Spacing.RadiusSmall.TopLeft, radius),
             Padding = new Thickness(Spacing.M, Spacing.S),
-            Margin = new Thickness(Spacing.L, 0, 0, 0),
+            Margin = new Thickness(Spacing.XXL, 0, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Right,
             Child = content,
         };
     }
@@ -149,14 +152,12 @@ public static class ChatItemViews
         };
         AutomationProperties.SetName(row, item.Title);
         ToolTip.SetTip(row, item.Title);
-        var result = new SelectableTextBlock { FontFamily = Typography.Code, FontSize = 11.5, Foreground = Palette.TextSecondary, TextWrapping = TextWrapping.Wrap };
+        var result = new SelectableTextBlock { FontFamily = Typography.Code, FontSize = Typography.CaptionSize, Foreground = Palette.TextSecondary, TextWrapping = TextWrapping.Wrap };
         var resultBox = new Border
         {
-            Background = Palette.EditorBackground,
-            BorderBrush = Palette.Border,
-            BorderThickness = new Thickness(1),
-            Margin = new Thickness(Spacing.L, 2, 0, 0),
-            Child = new ScrollViewer { MaxHeight = 220, Padding = new Thickness(Spacing.S, Spacing.XS), Content = result },
+            Classes = { "card" },
+            Margin = new Thickness(Spacing.L, Spacing.XXS, 0, 0),
+            Child = new ScrollViewer { MaxHeight = 220, Padding = new Thickness(Spacing.M, Spacing.S), Content = result },
         };
         var proposal = new ContentControl();
         var root = new StackPanel { Spacing = 2, Children = { row, proposal, resultBox } };
@@ -240,7 +241,7 @@ public static class ChatItemViews
         var openDiff = new FlatButton(Icons.Diff, "Open Diff in Editor", 14) { Command = edit.OpenDiffCommand };
 
         var accept = new FlatButton { Classes = { "primary" }, Content = "Accept", Command = edit.AcceptCommand, Padding = new Thickness(Spacing.M, 3) };
-        var reject = new FlatButton { Content = "Reject", Command = edit.RejectCommand, Padding = new Thickness(Spacing.M, 3), BorderBrush = Palette.BorderStrong };
+        var reject = new FlatButton { Classes = { "secondary" }, Content = "Reject", Command = edit.RejectCommand, Padding = new Thickness(Spacing.M, 3) };
         AutomationProperties.SetName(accept, $"Accept change to {edit.RelativePath}");
         AutomationProperties.SetName(reject, $"Reject change to {edit.RelativePath}");
         var outcome = new TextBlock { FontSize = Typography.SmallSize, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
@@ -260,14 +261,11 @@ public static class ChatItemViews
             };
         }
 
-        var card = new ChamferBorder
+        var card = new Border
         {
-            Classes = { "edit-proposal" },
-            Background = Palette.SideBar,
-            BorderBrush = Palette.BorderStrong,
-            BorderThickness = 1,
-            Chamfer = Spacing.ChamferSmall,
-            Margin = new Thickness(Spacing.L, 2, 0, 2),
+            Classes = { "card", "edit-proposal" },
+            ClipToBounds = true, // the diff's tinted rows stay inside the rounded corners
+            Margin = new Thickness(Spacing.L, Spacing.XXS, 0, Spacing.XXS),
             Child = new DockPanel
             {
                 Children =
@@ -315,7 +313,7 @@ public static class ChatItemViews
             Child = new TextBlock
             {
                 FontFamily = Typography.Code,
-                FontSize = 12,
+                FontSize = Typography.SmallSize,
                 Foreground = foreground,
                 Text = line.Kind == DiffLineKind.Gap
                     ? $"      {sign} {line.Text}"
@@ -328,7 +326,7 @@ public static class ChatItemViews
     public static Control CommandCard(CommandProposalItem command)
     {
         var run = new FlatButton { Classes = { "primary" }, Content = "Run", Command = command.RunCommand, Padding = new Thickness(Spacing.M, 3) };
-        var skip = new FlatButton { Content = "Skip", Command = command.SkipCommand, Padding = new Thickness(Spacing.M, 3), BorderBrush = Palette.BorderStrong };
+        var skip = new FlatButton { Classes = { "secondary" }, Content = "Skip", Command = command.SkipCommand, Padding = new Thickness(Spacing.M, 3) };
         AutomationProperties.SetName(run, "Run command");
         AutomationProperties.SetName(skip, "Skip command");
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Spacing.S, Children = { run, skip } };
@@ -347,15 +345,11 @@ public static class ChatItemViews
             };
         }
 
-        var card = new ChamferBorder
+        var card = new Border
         {
-            Classes = { "command-proposal" },
-            Background = Palette.SideBar,
-            BorderBrush = Palette.BorderStrong,
-            BorderThickness = 1,
-            Chamfer = Spacing.ChamferSmall,
-            Margin = new Thickness(Spacing.L, 2, 0, 2),
-            Padding = new Thickness(Spacing.S),
+            Classes = { "card", "command-proposal" },
+            Margin = new Thickness(Spacing.L, Spacing.XXS, 0, Spacing.XXS),
+            Padding = new Thickness(Spacing.M),
             Child = new StackPanel
             {
                 Spacing = Spacing.S,
@@ -374,8 +368,11 @@ public static class ChatItemViews
                     new Border
                     {
                         Background = Palette.EditorBackground,
+                        BorderBrush = Palette.Border,
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = Spacing.RadiusMedium,
                         Padding = new Thickness(Spacing.S, Spacing.XS),
-                        Child = new SelectableTextBlock { Text = command.Command, FontFamily = Typography.Code, FontSize = 12, TextWrapping = TextWrapping.Wrap },
+                        Child = new SelectableTextBlock { Text = command.Command, FontFamily = Typography.Code, FontSize = Typography.SmallSize, TextWrapping = TextWrapping.Wrap },
                     },
                     new Panel { Children = { actions, outcome } },
                 },
@@ -409,7 +406,7 @@ public static class ChatItemViews
         };
         if (item.RetryCommand is { } retry)
         {
-            var button = new FlatButton { Content = "Retry", Command = retry, Padding = new Thickness(Spacing.S, 2), Margin = new Thickness(Spacing.S, 0, 0, 0), VerticalAlignment = VerticalAlignment.Top, BorderBrush = Palette.BorderStrong };
+            var button = new FlatButton { Classes = { "secondary" }, Content = "Retry", Command = retry, Padding = new Thickness(Spacing.S, 2), Margin = new Thickness(Spacing.S, 0, 0, 0), VerticalAlignment = VerticalAlignment.Top };
             panel.Children.Add(button.Dock(Dock.Right));
         }
 
@@ -443,15 +440,16 @@ public static class ChatItemViews
             content.Children.Add(button);
         }
 
-        var chip = new ChamferBorder
+        // A rounded pill (chips are about 22px tall, so the large radius closes the ends).
+        var chip = new Border
         {
             Classes = { "attachment-chip" },
             Background = Palette.Hover,
             BorderBrush = Palette.Border,
-            BorderThickness = 1,
-            Chamfer = Spacing.ChamferSmall,
-            Padding = new Thickness(6, 2, remove is null ? 6 : 2, 2),
-            Margin = new Thickness(0, 0, 4, 4),
+            BorderThickness = new Thickness(1),
+            CornerRadius = Spacing.RadiusLarge,
+            Padding = new Thickness(Spacing.S, Spacing.XXS, remove is null ? Spacing.S : Spacing.XXS, Spacing.XXS),
+            Margin = new Thickness(0, 0, Spacing.XS, Spacing.XS),
             Child = content,
         };
         ToolTip.SetTip(chip, attachment.Path ?? attachment.Name);
