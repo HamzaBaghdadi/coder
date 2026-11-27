@@ -32,6 +32,7 @@ public sealed class TerminalPanel : DockPanel
 
     private readonly WorkbenchViewModel _workbench;
     private readonly TextBlock _message;
+    private readonly StackPanel _messageView;
     private readonly Grid _panesHost = new();
     private readonly StackPanel _tabs = new() { Spacing = 1, Margin = new Thickness(4) };
     private readonly Border _list;
@@ -46,6 +47,16 @@ public sealed class TerminalPanel : DockPanel
     public TerminalPanel(WorkbenchViewModel workbench)
     {
         _workbench = workbench;
+        workbench.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(WorkbenchViewModel.TerminalFontFamily) or nameof(WorkbenchViewModel.TerminalFontSize))
+            {
+                foreach (var pane in _panes)
+                {
+                    pane.View.SetFont(workbench.TerminalFontFamily, workbench.TerminalFontSize);
+                }
+            }
+        };
         Background = TerminalPalette.Background;
         OpenUrl = async uri =>
         {
@@ -57,21 +68,37 @@ public sealed class TerminalPanel : DockPanel
 
         _message = new TextBlock
         {
-            Margin = new Thickness(Spacing.L),
-            Foreground = Palette.TextSecondary,
+            Classes = { "secondary" },
             TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Center,
+        };
+
+        // Shown instead of the terminals when no shell can start: a quiet icon over one line of text.
+        _messageView = new StackPanel
+        {
+            Margin = new Thickness(Spacing.L, Spacing.XL),
+            Spacing = Spacing.S,
+            MaxWidth = 480,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
             IsVisible = false,
+            Children =
+            {
+                new Icon(Icons.Terminal, 20) { Foreground = Palette.TextSecondary, HorizontalAlignment = HorizontalAlignment.Center },
+                _message,
+            },
         };
 
         Toolbar = CreateToolbar(() => AddTerminal(), workbench.ShowNewTerminalWithProfilePicker, () => Split(), KillActive);
         _list = CreateList();
         _list.IsVisible = false;
         Children.Add(_list.Dock(Dock.Right));
-        Children.Add(new Panel { Children = { _panesHost, _message } });
+        Children.Add(new Panel { Children = { _panesHost, _messageView } });
         Pane(0); // one pane from the start, so the first shell knows its size
 
         workbench.NewTerminalRequested += (_, profile) => Dispatcher.UIThread.Post(() => AddTerminal(profile));
         workbench.TerminalAtFolderRequested += (_, folder) => Dispatcher.UIThread.Post(() => AddTerminal(folder: folder));
+        workbench.TerminalRequested += (_, request) => Dispatcher.UIThread.Post(() => AddTerminal(request));
         workbench.SplitTerminalRequested += (_, _) => Dispatcher.UIThread.Post(() => Split());
         workbench.FindInTerminalRequested += (_, _) => Dispatcher.UIThread.Post(() => PaneOf(_active)?.FindBar.Open(), DispatcherPriority.Background);
         workbench.PropertyChanged += (_, e) =>
@@ -143,6 +170,23 @@ public sealed class TerminalPanel : DockPanel
         }
     }
 
+    /// <summary>A terminal an extension asked for: named, with its variables, its command typed in once the shell starts.</summary>
+    private void AddTerminal(TerminalRequest request)
+    {
+        if (CreateTerminal(new TerminalGroup(), _workbench.DefaultShellProfile, request.WorkingDirectory, request.Environment) is not { } terminal)
+        {
+            return;
+        }
+
+        terminal.Name = request.Name;
+        _terminals.Add(terminal);
+        Activate(terminal);
+        if (request.CommandLine is { Length: > 0 } command)
+        {
+            terminal.Session.Write(command + "\r"); // the console keeps it until the shell reads input
+        }
+    }
+
     /// <summary>Starts a new shell beside the active one (Ctrl+Shift+5); with no terminal yet, just a new one.</summary>
     private void Split()
     {
@@ -164,7 +208,7 @@ public sealed class TerminalPanel : DockPanel
         Activate(terminal);
     }
 
-    private TerminalInstance? CreateTerminal(TerminalGroup group, ShellProfile? profile, string? startFolder = null)
+    private TerminalInstance? CreateTerminal(TerminalGroup group, ShellProfile? profile, string? startFolder = null, IReadOnlyDictionary<string, string>? environment = null)
     {
         if (!PseudoTerminal.IsSupported)
         {
@@ -174,12 +218,12 @@ public sealed class TerminalPanel : DockPanel
 
         // A split starts where the terminal it splits is (when that shell reports its folder).
         var folder = startFolder ?? (group.Terminals.Count > 0 ? _active?.Session.Emulator.CurrentDirectory : null);
-        if (StartSession(PaneOf(_active) ?? Pane(0), profile, folder) is not { } session)
+        if (StartSession(PaneOf(_active) ?? Pane(0), profile, folder, environment) is not { } session)
         {
             return null;
         }
 
-        var terminal = new TerminalInstance(session, group, profile);
+        var terminal = new TerminalInstance(session, group, profile) { Environment = environment };
         group.Terminals.Add(terminal);
         Watch(terminal);
         return terminal;
@@ -188,7 +232,7 @@ public sealed class TerminalPanel : DockPanel
     /// <summary>Enter after a shell exited: a new shell takes its place.</summary>
     private void Restart(TerminalInstance terminal)
     {
-        if (StartSession(PaneOf(terminal) ?? Pane(0), terminal.Profile) is not { } session)
+        if (StartSession(PaneOf(terminal) ?? Pane(0), terminal.Profile, environment: terminal.Environment) is not { } session)
         {
             return;
         }
@@ -241,7 +285,7 @@ public sealed class TerminalPanel : DockPanel
     private void Activate(TerminalInstance terminal)
     {
         _active = terminal;
-        _message.IsVisible = false;
+        _messageView.IsVisible = false;
         _panesHost.IsVisible = true;
         ShowGroup(terminal.Group);
         RebuildTabs();
@@ -298,6 +342,7 @@ public sealed class TerminalPanel : DockPanel
         while (_panes.Count <= index)
         {
             var pane = new TerminalPane();
+            pane.View.SetFont(_workbench.TerminalFontFamily, _workbench.TerminalFontSize);
             var position = _panes.Count;
             pane.View.RestartRequested += (_, _) =>
             {
@@ -382,13 +427,13 @@ public sealed class TerminalPanel : DockPanel
         return position >= 0 && position < _panes.Count ? _panes[position] : null;
     }
 
-    private TerminalSession? StartSession(TerminalPane sizeFrom, ShellProfile? profile, string? folder = null)
+    private TerminalSession? StartSession(TerminalPane sizeFrom, ShellProfile? profile, string? folder = null, IReadOnlyDictionary<string, string>? environment = null)
     {
         try
         {
             var (columns, rows) = sizeFrom.View.GridSize; // a new split pane is resized once laid out
             var start = folder is not null && Directory.Exists(folder) ? folder : _workbench.TerminalWorkingDirectory;
-            return TerminalSession.Start(start, columns, rows, profile is null ? null : ShellIntegration.CommandLine(profile));
+            return TerminalSession.Start(start, columns, rows, profile is null ? null : ShellIntegration.CommandLine(profile), environment);
         }
         catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or IOException or PlatformNotSupportedException)
         {
@@ -412,7 +457,7 @@ public sealed class TerminalPanel : DockPanel
     private void ShowMessage(string text)
     {
         _message.Text = text;
-        _message.IsVisible = true;
+        _messageView.IsVisible = true;
         _panesHost.IsVisible = false;
     }
 
@@ -436,13 +481,13 @@ public sealed class TerminalPanel : DockPanel
     private FlatButton Row(TerminalInstance terminal, int number)
     {
         var isActive = ReferenceEquals(terminal, _active);
-        var label = $"{number.ToString(CultureInfo.InvariantCulture)}: {(terminal.Title.Length > 0 ? terminal.Title : terminal.Profile?.Name ?? "shell")}";
+        var label = $"{number.ToString(CultureInfo.InvariantCulture)}: {terminal.Name ?? (terminal.Title.Length > 0 ? terminal.Title : terminal.Profile?.Name ?? "shell")}";
         var kill = new FlatButton(Icons.Trash, $"Kill Terminal {number}", 13)
         {
             Width = 20,
             Height = 20,
             Padding = new Thickness(0),
-            Chamfer = Spacing.ChamferSmall,
+            Radius = Spacing.RadiusSmall.TopLeft,
             Command = new RelayCommand(() => Kill(terminal)),
             Opacity = isActive ? 1 : 0,
         };
@@ -469,8 +514,8 @@ public sealed class TerminalPanel : DockPanel
 
         var row = new FlatButton
         {
-            Height = 26,
-            Padding = new Thickness(Spacing.S, 0, 3, 0),
+            Height = 28,
+            Padding = new Thickness(Spacing.S, 0, Spacing.XS, 0),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             Command = new RelayCommand(() => Activate(terminal)),
@@ -528,5 +573,11 @@ public sealed class TerminalPanel : DockPanel
         public ShellProfile? Profile { get; } = profile;
 
         public string Title { get; set; } = string.Empty;
+
+        /// <summary>A name given when it was opened (an extension's terminal), shown instead of the shell's title.</summary>
+        public string? Name { get; set; }
+
+        /// <summary>Extra variables it was started with, kept when the shell restarts.</summary>
+        public IReadOnlyDictionary<string, string>? Environment { get; init; }
     }
 }

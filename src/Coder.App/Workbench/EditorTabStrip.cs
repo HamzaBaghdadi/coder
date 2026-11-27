@@ -16,7 +16,8 @@ namespace Coder.App.Workbench;
 
 /// <summary>
 /// Horizontally scrolling tabs: a slim scroll bar shows when they overflow, the wheel scrolls them
-/// sideways, and the active tab is kept in view. The active tab blends into the editor and carries an accent top line;
+/// sideways, and the active tab is kept in view. Tabs are rounded pills on the editor panel; the active one is filled
+/// and underlined with the accent;
 /// a dirty tab shows a dot that turns into a close button on hover. Middle-click closes a tab, and a
 /// file's tab can be dragged onto Coder Agent's chat to attach the file.
 /// </summary>
@@ -36,14 +37,15 @@ public sealed class EditorTabStrip : Border
     {
         _editors = editors;
         Height = Spacing.TabHeight;
-        Background = Palette.SideBar;
+        Background = Palette.EditorBackground; // the tabs sit on the editor panel itself
         BorderBrush = Palette.Border;
         BorderThickness = new Thickness(0, 0, 0, 1);
+        Padding = new Thickness(Spacing.XS, 0);
 
         _tabs = new ItemsControl
         {
             ItemsSource = editors.Tabs,
-            ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal }),
+            ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal, Spacing = Spacing.XXS }),
             ItemTemplate = Templates.Row<TabViewModel>(CreateTab),
         };
 
@@ -91,7 +93,7 @@ public sealed class EditorTabStrip : Border
             Width = 20,
             Height = 20,
             Padding = new Thickness(0),
-            Chamfer = Spacing.ChamferSmall,
+            Radius = Spacing.RadiusSmall.TopLeft,
             Command = new Presentation.Mvvm.RelayCommand(() => _ = _editors.CloseAsync(tab)),
         };
 
@@ -106,12 +108,23 @@ public sealed class EditorTabStrip : Border
         };
 
         var title = new TextBlock { Text = tab.Title, VerticalAlignment = VerticalAlignment.Center };
-        // The tab surface has the logo's cut corner at the top right, like a folder tab.
+        var underline = new Border
+        {
+            Height = 2,
+            Margin = new Thickness(Spacing.S, 0),
+            CornerRadius = new CornerRadius(1),
+            Background = Palette.Accent,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            IsHitTestVisible = false,
+        };
+
+        // The tab: a rounded pill, vertically centered in the strip.
         var root = new ChamferBorder
         {
-            Padding = new Thickness(Spacing.M, 0, Spacing.M, 0),
-            Chamfer = Spacing.ChamferLarge,
-            Corners = ChamferCorners.TopRight,
+            Height = Spacing.TabHeight - 8,
+            VerticalAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(Spacing.S + Spacing.XXS, 0, Spacing.XS, 0),
+            Radius = Spacing.RadiusMedium.TopLeft,
             Child = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -135,8 +148,8 @@ public sealed class EditorTabStrip : Border
             var hovered = root.IsPointerOver;
             title.Text = tab.Title;
             title.Foreground = tab.IsActive ? Palette.TextPrimary : Palette.TextSecondary;
-            root.Background = tab.IsActive ? Palette.EditorBackground : hovered ? Palette.Hover : Palette.HoverClear;
-            root.TopEdgeBrush = tab.IsActive ? Brand.Gradient : null; // the accent follows the cut corner
+            root.Background = tab.IsActive ? Palette.Pressed : hovered ? Palette.Hover : Palette.HoverClear;
+            underline.IsVisible = tab.IsActive; // a shape cue besides the fill, so the active tab never relies on color alone
 
             // A dirty tab shows a dot; hovering swaps it for the close button.
             dirtyDot.IsVisible = tab.IsDirty && !hovered;
@@ -231,14 +244,6 @@ public sealed class EditorTabStrip : Border
         };
         Update();
 
-        // A hairline between tabs.
-        var separator = new Border
-        {
-            Width = 1,
-            Background = Palette.Border,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            IsHitTestVisible = false,
-        };
-        return new Panel { Children = { root, separator } };
+        return new Panel { Children = { root, underline } };
     }
 }

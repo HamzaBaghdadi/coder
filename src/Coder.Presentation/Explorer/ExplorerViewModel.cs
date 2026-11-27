@@ -39,7 +39,7 @@ public sealed class ExplorerViewModel(IFileSystem fileSystem) : ObservableObject
     /// <summary>Asks before deleting and moving; null in tests that don't need to.</summary>
     public IDialogService? Dialogs { get; set; }
 
-    public ObservableCollection<ExplorerItemViewModel> Rows { get; } = [];
+    public RowCollection<ExplorerItemViewModel> Rows { get; } = [];
 
     public string? RootPath
     {
@@ -54,7 +54,7 @@ public sealed class ExplorerViewModel(IFileSystem fileSystem) : ObservableObject
         }
     }
 
-    public string RootName => RootPath is null ? "No folder opened" : Path.GetFileName(RootPath.TrimEnd(Path.DirectorySeparatorChar)).ToUpperInvariant();
+    public string RootName => RootPath is null ? "No folder opened" : Path.GetFileName(RootPath.TrimEnd(Path.DirectorySeparatorChar));
 
     public bool HasFolder => RootPath is not null;
 
@@ -68,10 +68,7 @@ public sealed class ExplorerViewModel(IFileSystem fileSystem) : ObservableObject
     {
         RootPath = path;
         Rows.Clear();
-        foreach (var entry in fileSystem.GetChildren(path))
-        {
-            Rows.Add(new ExplorerItemViewModel(entry, 0));
-        }
+        Rows.InsertRange(0, fileSystem.GetChildren(path).Select(entry => new ExplorerItemViewModel(entry, 0)).ToList());
     }
 
     /// <summary>Enter / click: toggles folders, opens files.</summary>
@@ -442,6 +439,113 @@ public sealed class ExplorerViewModel(IFileSystem fileSystem) : ObservableObject
         }
     }
 
+    /// <summary>
+    /// What dropping <paramref name="item"/> on <paramref name="target"/> would do, in words for the label
+    /// that follows the pointer: "Move app.ts into src", or why it can't ("app.ts is already in src").
+    /// </summary>
+    public string DescribeMove(ExplorerItemViewModel item, ExplorerItemViewModel? target)
+    {
+        var folder = TargetFolder(target);
+        var into = FolderName(folder);
+        if (folder is null)
+        {
+            return item.Name;
+        }
+
+        if (item.IsDirectory && (IsUnder(folder, item.Path) || DocumentUri.PathComparer.Equals(folder, item.Path)))
+        {
+            return $"Can't move {item.Name} into itself";
+        }
+
+        return DocumentUri.PathComparer.Equals(Path.GetDirectoryName(item.Path), folder)
+            ? $"{item.Name} is already in {into}"
+            : $"Move {item.Name} into {into}";
+    }
+
+    /// <summary>The folder a drop on <paramref name="target"/> lands in, as a row (null: the top of the tree).</summary>
+    public ExplorerItemViewModel? DropFolderRow(ExplorerItemViewModel? target) =>
+        target is null ? null : target.IsDirectory ? target : Parent(target);
+
+    /// <summary>The name a drop target is shown with: the folder's, or the project's for the top of the tree.</summary>
+    public string FolderName(string? folder) =>
+        folder is null || DocumentUri.PathComparer.Equals(folder, RootPath) ? RootName : Path.GetFileName(folder);
+
+    /// <summary>The folder a drop on <paramref name="target"/> lands in (a file's folder; null: the top of the tree).</summary>
+    public string? DropFolder(ExplorerItemViewModel? target) => TargetFolder(target);
+
+    /// <summary>
+    /// Files and folders dropped from outside Coder (File Explorer, a browser's image): copied into the
+    /// folder under the pointer, as VS Code does. A name that is taken gets " copy" added, so nothing
+    /// is ever overwritten. Returns what was added.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> CopyInAsync(IReadOnlyList<string> paths, ExplorerItemViewModel? target)
+    {
+        if (TargetFolder(target) is not { } folder)
+        {
+            return [];
+        }
+
+        var added = new List<string>();
+        foreach (var path in paths.Select(p => p.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)))
+        {
+            var name = Path.GetFileName(path);
+            if (name.Length == 0 || !fileSystem.Exists(path))
+            {
+                continue;
+            }
+
+            if (DocumentUri.PathComparer.Equals(path, folder) || IsUnder(folder, path))
+            {
+                Notice?.Invoke(this, $"Can't copy {name} into itself.");
+                continue;
+            }
+
+            var destination = FreeName(folder, name);
+            try
+            {
+                await Task.Run(() => fileSystem.Copy(path, destination)); // a big folder must not freeze the window
+                added.Add(destination);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                Notice?.Invoke(this, $"Couldn't copy {name}: {exception.Message}");
+            }
+        }
+
+        if (added.Count > 0)
+        {
+            Refresh();
+            Reveal(added[^1]);
+            Notice?.Invoke(this, added.Count == 1
+                ? $"Added {Path.GetFileName(added[0])} to {FolderName(folder)}."
+                : $"Added {added.Count} items to {FolderName(folder)}.");
+        }
+
+        return added;
+    }
+
+    /// <summary>"logo.png", else "logo copy.png", "logo copy 2.png"…</summary>
+    private string FreeName(string folder, string name)
+    {
+        var candidate = Path.Combine(folder, name);
+        if (!fileSystem.Exists(candidate))
+        {
+            return candidate;
+        }
+
+        var isFolder = !Path.HasExtension(name) || Directory.Exists(candidate);
+        var stem = isFolder ? name : Path.GetFileNameWithoutExtension(name);
+        var extension = isFolder ? string.Empty : Path.GetExtension(name);
+        for (var n = 1; ; n++)
+        {
+            candidate = Path.Combine(folder, $"{stem} copy{(n == 1 ? string.Empty : $" {n}")}{extension}");
+            if (!fileSystem.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+    }
+
     /// <summary>The folder a drop lands in: the folder itself, a file's folder, or the root.</summary>
     private string? TargetFolder(ExplorerItemViewModel? target) =>
         target is null ? RootPath : target.IsDirectory ? target.Path : Path.GetDirectoryName(target.Path);
@@ -479,32 +583,36 @@ public sealed class ExplorerViewModel(IFileSystem fileSystem) : ObservableObject
         }
 
         folder.IsExpanded = true;
-        var insertAt = Rows.IndexOf(folder) + 1;
-        foreach (var entry in children)
-        {
-            var child = new ExplorerItemViewModel(entry, folder.Depth + 1);
-            folder.VisibleChildren.Add(child);
-            Rows.Insert(insertAt++, child);
-        }
+        var rows = children.Select(entry => new ExplorerItemViewModel(entry, folder.Depth + 1)).ToList();
+        folder.VisibleChildren.AddRange(rows);
+        Rows.InsertRange(Rows.IndexOf(folder) + 1, rows); // one change, however many there are
     }
 
+    /// <summary>Removes everything shown under the folder (a contiguous run of rows) in one change.</summary>
     private void Collapse(ExplorerItemViewModel folder)
     {
-        foreach (var child in folder.VisibleChildren)
+        var start = Rows.IndexOf(folder) + 1;
+        if (start == 0)
         {
-            if (child.IsExpanded)
-            {
-                Collapse(child);
-            }
-
-            Rows.Remove(child);
+            Forget(folder);
+            return;
         }
 
-        folder.VisibleChildren.Clear();
-        folder.IsExpanded = false;
-        foreach (var pending in Rows.Where(r => r.IsPending && DocumentUri.PathComparer.Equals(r.ParentFolder, folder.Path)).ToList())
+        var end = start;
+        while (end < Rows.Count && Rows[end].Depth > folder.Depth)
         {
-            Rows.Remove(pending);
+            Forget(Rows[end]);
+            end++;
+        }
+
+        Rows.RemoveRange(start, end - start);
+        Forget(folder);
+
+        static void Forget(ExplorerItemViewModel row)
+        {
+            row.VisibleChildren.Clear();
+            row.IsExpanded = false;
+            row.IsEditing = false;
         }
     }
 }

@@ -329,7 +329,7 @@ public sealed class SettingsSyncViewModel : ObservableObject, IDisposable
             {
                 try
                 {
-                    _store.Uninstall(id);
+                    await _store.UninstallAsync(id);
                     removed.Add(id);
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)

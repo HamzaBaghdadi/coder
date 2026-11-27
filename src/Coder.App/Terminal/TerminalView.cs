@@ -40,6 +40,9 @@ public sealed partial class TerminalView : Control
         CursorProperty.OverrideDefaultValue<TerminalView>(new Cursor(StandardCursorType.Ibeam));
     }
 
+    /// <summary>The terminal font (settings); the code font list follows it for missing characters.</summary>
+    private FontFamily _family = Typography.Code;
+
     public TerminalView()
     {
         _metrics = new EditorMetrics(new Typeface(Typography.Code), 13, 1.35);
@@ -137,6 +140,16 @@ public sealed partial class TerminalView : Control
         var size = base.ArrangeOverride(finalSize);
         Dispatcher.UIThread.Post(ResizeSession); // after Bounds is updated
         return size;
+    }
+
+    /// <summary>Uses <paramref name="family"/> (empty: the code font list) at <paramref name="size"/>, and refits the grid.</summary>
+    public void SetFont(string family, double size)
+    {
+        _family = string.IsNullOrWhiteSpace(family) ? Typography.Code : new FontFamily($"{family}, {Typography.Code}");
+        _metrics = new EditorMetrics(new Typeface(_family), Math.Clamp(size, 8, 40), 1.35);
+        _rowCache.Clear();
+        ResizeSession();
+        InvalidateVisual();
     }
 
     private void ResizeSession()

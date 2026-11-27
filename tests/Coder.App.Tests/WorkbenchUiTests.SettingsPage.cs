@@ -40,7 +40,7 @@ public sealed partial class WorkbenchUiTests
 
         page.Query = "font";
         Dispatcher.UIThread.RunJobs();
-        Assert.Equal(["Font Size"], page.Visible.Select(i => i.Title));
+        Assert.Equal(["Font Family", "Font Size", "Line Height", "Terminal Font Family", "Terminal Font Size"], page.Visible.Select(i => i.Title));
         page.Query = "zzzz";
         Assert.False(page.HasResults);
 

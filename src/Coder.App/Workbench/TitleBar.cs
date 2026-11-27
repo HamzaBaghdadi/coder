@@ -26,9 +26,7 @@ public sealed class TitleBar : Border
     public TitleBar(WorkbenchViewModel workbench, Window window)
     {
         Height = Spacing.TitleBarHeight;
-        Background = Palette.Chrome;
-        BorderBrush = Palette.Border;
-        BorderThickness = new Thickness(0, 0, 0, 1);
+        Background = Palette.Chrome; // part of the shell: no divider, the panels below draw the edges
         WindowDecorationProperties.SetElementRole(this, WindowDecorationsElementRole.TitleBar);
 
         var left = new StackPanel
@@ -96,7 +94,7 @@ public sealed class TitleBar : Border
     /// </summary>
     private static Control Manage(WorkbenchViewModel workbench)
     {
-        var button = new FlatButton(Icons.Settings, "Manage");
+        var button = new FlatButton(Icons.Settings, "Manage", Spacing.TitleBarGlyph) { Width = Spacing.TitleBarButton, Height = Spacing.TitleBarButton };
         var dot = new Border
         {
             Width = 7,
@@ -158,8 +156,8 @@ public sealed class TitleBar : Border
     /// </summary>
     private static FlatButton SideToggle(WorkbenchViewModel workbench, bool left)
     {
-        var icon = new Icon(left ? Icons.LayoutSideBar : Icons.LayoutSecondary, 16);
-        var button = new FlatButton(Icons.Close, string.Empty) { Content = icon };
+        var icon = new Icon(left ? Icons.LayoutSideBar : Icons.LayoutSecondary, Spacing.TitleBarLayoutGlyph);
+        var button = new FlatButton(Icons.Close, string.Empty) { Content = icon, Width = Spacing.TitleBarButton, Height = Spacing.TitleBarButton };
         bool IsPrimary() => left != workbench.IsSideBarOnRight;
         void Update()
         {
@@ -196,8 +194,8 @@ public sealed class TitleBar : Border
     private static FlatButton LayoutToggle(WorkbenchViewModel workbench, Expression<Func<WorkbenchViewModel, bool>> visible,
         Geometry hidden, Geometry shown, string name, Action toggle)
     {
-        var icon = new Icon(hidden, 16).Bind(Icon.DataProperty, workbench, visible, isVisible => isVisible ? shown : hidden);
-        var button = new FlatButton(Icons.Close, name) { Content = icon, Command = new RelayCommand(toggle) };
+        var icon = new Icon(hidden, Spacing.TitleBarLayoutGlyph).Bind(Icon.DataProperty, workbench, visible, isVisible => isVisible ? shown : hidden);
+        var button = new FlatButton(Icons.Close, name) { Content = icon, Command = new RelayCommand(toggle), Width = Spacing.TitleBarButton, Height = Spacing.TitleBarButton };
         WindowDecorationProperties.SetElementRole(button, WindowDecorationsElementRole.User);
         return button;
     }
@@ -208,15 +206,20 @@ public sealed class TitleBar : Border
         {
             Classes = { "command-center" },
             Width = 440,
-            Height = 26,
-            Padding = new Thickness(Spacing.S, 0),
+            Height = 28,
+            Padding = new Thickness(Spacing.S + Spacing.XXS, 0, Spacing.XS, 0),
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             Content = new DockPanel
             {
                 Children =
                 {
                     new Icon(Icons.Search, 14) { Margin = new Thickness(0, 0, Spacing.S, 0) }.Dock(Dock.Left),
-                    new TextBlock { Text = "Ctrl+P", FontSize = Typography.CaptionSize, Foreground = Palette.TextMuted, VerticalAlignment = VerticalAlignment.Center }.Dock(Dock.Right),
+                    new Border
+                    {
+                        Classes = { "kbd" },
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Child = new TextBlock { Text = "Ctrl+P", FontSize = Typography.CaptionSize, Foreground = Palette.TextSecondary },
+                    }.Dock(Dock.Right),
                     new TextBlock
                     {
                         Text = "Search files and commands",

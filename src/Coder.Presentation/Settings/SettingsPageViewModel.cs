@@ -78,7 +78,43 @@ public sealed class NumberSetting(string category, string title, string descript
 public sealed class ChoiceSetting(string category, string title, string description, IReadOnlyList<SettingOption> options, Func<string> get, Action<string> set)
     : SettingItem(category, title, description)
 {
-    public IReadOnlyList<SettingOption> Options { get; } = options;
+    private readonly System.Collections.ObjectModel.ObservableCollection<SettingOption> _options = new(options);
+
+    /// <summary>The options; observable, so ones found later (installed themes) show in an open list.</summary>
+    public IReadOnlyList<SettingOption> Options => _options;
+
+    /// <summary>Starts loading more options (e.g. installed themes) and adds them when they arrive.</summary>
+    public ChoiceSetting WithOptionsFrom(Func<Task<IEnumerable<SettingOption>>> find)
+    {
+        _ = LoadAsync();
+        return this;
+
+        async Task LoadAsync()
+        {
+            try
+            {
+                AddOptions(await find());
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                // A theme folder that can't be read just leaves its themes out; the built-in ones stay.
+            }
+        }
+    }
+
+    /// <summary>Adds options found after the page was built (skipping ids already listed) and reselects.</summary>
+    public void AddOptions(IEnumerable<SettingOption> more)
+    {
+        foreach (var option in more)
+        {
+            if (_options.All(o => o.Id != option.Id))
+            {
+                _options.Add(option);
+            }
+        }
+
+        OnPropertyChanged(nameof(Selected));
+    }
 
     public SettingOption? Selected
     {

@@ -18,9 +18,7 @@ public sealed class StatusBarView : Border
     {
         var status = workbench.StatusBar;
         Height = Spacing.StatusBarHeight;
-        Background = Palette.StatusBar;
-        BorderBrush = Palette.Border;
-        BorderThickness = new Thickness(0, 1, 0, 0);
+        Background = Palette.StatusBar; // part of the shell: no divider, the panels above end with their own edge
         TextElement.SetFontSize(this, Typography.SmallSize);
         TextElement.SetForeground(this, Palette.TextSecondary);
 
@@ -60,6 +58,7 @@ public sealed class StatusBarView : Border
             Children =
             {
                 Blame(workbench.SourceControl.Blame),
+                InlineSuggestions(workbench),
                 new TextBlock { VerticalAlignment = VerticalAlignment.Center }.Bind(TextBlock.TextProperty, languages, x => x.StatusText),
                 Fact(status, x => x.CursorText),
                 Fact(status, x => x.IndentText),
@@ -71,12 +70,12 @@ public sealed class StatusBarView : Border
 
         Child = new DockPanel
         {
-            Margin = new Thickness(Spacing.M, 0),
+            Margin = new Thickness(Spacing.S, 0),
             Children =
             {
                 UpdatePill(workbench).Dock(Dock.Right),
                 facts.Dock(Dock.Right),
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = Spacing.L, Children = { Branch(workbench), problems, message } },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = Spacing.S, Children = { Branch(workbench), problems, message } },
             },
         };
     }
@@ -100,7 +99,7 @@ public sealed class StatusBarView : Border
                 Children =
                 {
                     new Icon(Icons.Refresh, 12) { Foreground = Palette.TextOnAccent },
-                    new TextBlock { Text = "Restart to Update", VerticalAlignment = VerticalAlignment.Center, Foreground = Palette.TextOnAccent, FontSize = Typography.CaptionSize, FontWeight = FontWeight.SemiBold },
+                    new TextBlock { Text = "Restart to Update", VerticalAlignment = VerticalAlignment.Center, Foreground = Palette.TextOnAccent, FontSize = Typography.CaptionSize, FontWeight = Typography.Strong },
                 },
             },
         }.Bind(IsVisibleProperty, updates, x => x.IsReady);
@@ -154,6 +153,46 @@ public sealed class StatusBarView : Border
         panel.Bind(ToolTip.TipProperty, blame, x => x.StatusDetail);
         Avalonia.Automation.AutomationProperties.SetName(panel, "Line Blame");
         return panel;
+    }
+
+    /// <summary>
+    /// Inline suggestions: a sparkle that is bright while on, faint while off, "…" while a request is out
+    /// and a warning (with the error in the tooltip) after a failure. Clicking turns them on or off.
+    /// </summary>
+    private static FlatButton InlineSuggestions(WorkbenchViewModel workbench)
+    {
+        var suggestions = workbench.InlineSuggestions;
+        var button = new FlatButton
+        {
+            Padding = new Thickness(4, 0),
+            Height = 20,
+            Chamfer = 0,
+            VerticalAlignment = VerticalAlignment.Center,
+            Command = workbench.Commands.ToCommand(Presentation.Commands.CommandIds.ToggleInlineSuggestions),
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                Children =
+                {
+                    new Icon(Icons.Sparkle, 13) { VerticalAlignment = VerticalAlignment.Center }
+                        .Bind(OpacityProperty, suggestions, x => x.Status, status => status == Presentation.Agent.InlineSuggestionStatus.Off ? 0.45 : 1.0)
+                        .Bind(IsVisibleProperty, suggestions, x => x.Status, status => status != Presentation.Agent.InlineSuggestionStatus.Failed),
+                    new Icon(Icons.Warning, 13) { VerticalAlignment = VerticalAlignment.Center, Foreground = Palette.Warning }
+                        .Bind(IsVisibleProperty, suggestions, x => x.Status, status => status == Presentation.Agent.InlineSuggestionStatus.Failed),
+                    new TextBlock { VerticalAlignment = VerticalAlignment.Center }
+                        .Bind(TextBlock.TextProperty, suggestions, x => x.Status, status => status switch
+                        {
+                            Presentation.Agent.InlineSuggestionStatus.Loading => "…",
+                            Presentation.Agent.InlineSuggestionStatus.Off => "Off",
+                            _ => string.Empty,
+                        }),
+                },
+            },
+        }.Bind(IsVisibleProperty, suggestions, x => x.IsAvailable);
+        button.Bind(ToolTip.TipProperty, suggestions, x => x.StatusTip);
+        Avalonia.Automation.AutomationProperties.SetName(button, "Inline Suggestions");
+        return button;
     }
 
     private static TextBlock Fact(StatusBarViewModel status, Expression<Func<StatusBarViewModel, string>> path) =>

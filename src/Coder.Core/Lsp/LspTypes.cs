@@ -36,6 +36,9 @@ public sealed record CompletionItem
     /// <summary>Type or signature shown next to the label.</summary>
     public string? Detail { get; init; }
 
+    /// <summary>Longer text for the details card beside the list (an Emmet expansion's preview).</summary>
+    public string? Documentation { get; init; }
+
     public string? SortText { get; init; }
 
     public string? FilterText { get; init; }

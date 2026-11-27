@@ -11,6 +11,7 @@ public static class Icons
     public static readonly Geometry Search = Geometry.Parse("M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14Z M20 20l-4.2-4.2");
     public static readonly Geometry ChevronRight = Geometry.Parse("M9 6l6 6l-6 6");
     public static readonly Geometry ChevronDown = Geometry.Parse("M6 9l6 6l6 -6");
+    public static readonly Geometry ChevronUp = Geometry.Parse("M6 15l6 -6l6 6");
     public static readonly Geometry Commit = Geometry.Parse("M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6Z M3 12h6 M15 12h6");
     public static readonly Geometry Close = Geometry.Parse("M7 7l10 10 M17 7L7 17");
     public static readonly Geometry File = Geometry.Parse("M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z M14 3v5h5");
@@ -66,4 +67,8 @@ public static class Icons
     public static readonly Geometry Minimize = Geometry.Parse("M6 12h12");
     public static readonly Geometry Maximize = Geometry.Parse("M8.5 6.5h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z");
     public static readonly Geometry Restore = Geometry.Parse("M8 9h5.5A1.5 1.5 0 0 1 15 10.5V16a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 16v-5.5A1.5 1.5 0 0 1 8 9Z M9 9V8a1.5 1.5 0 0 1 1.5-1.5H16A1.5 1.5 0 0 1 17.5 8v5.5A1.5 1.5 0 0 1 16 15h-1");
+    // Project switcher actions: an arrow into a frame (open here, after Lucide's "log-in"), and a frame with an
+    // arrow out of its corner (open in a new window, after Lucide's "external-link"; both ISC license).
+    public static readonly Geometry OpenHere = Geometry.Parse("M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4 M10 17l5-5l-5-5 M15 12H3");
+    public static readonly Geometry NewWindow = Geometry.Parse("M15 3h6v6 M10 14L21 3 M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6");
 }

@@ -9,8 +9,18 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        // First: an installer or updater may start Coder just to finish its work (shortcuts, cleanup), then exit.
-        Velopack.VelopackApp.Build().Run();
+        // The installer, updater and uninstaller start Coder just to run these, then it exits: the "coder"
+        // terminal command and File Explorer's "Open with Coder" come with installing (and with each update,
+        // so earlier installs get them too) and go with uninstalling.
+        var app = Velopack.VelopackApp.Build();
+        if (OperatingSystem.IsWindows())
+        {
+            app = app.OnAfterInstallFastCallback(_ => SetUpShell(install: true))
+                .OnAfterUpdateFastCallback(_ => SetUpShell(install: true))
+                .OnBeforeUninstallFastCallback(_ => SetUpShell(install: false));
+        }
+
+        app.Run();
 
         var (userDataDir, paths) = ParseArguments(args);
         var settingsPath = JsonSettingsStore.DefaultPath;
@@ -21,6 +31,25 @@ internal static class Program
         }
 
         return BuildAvaloniaApp(new JsonSettingsStore(settingsPath)).StartWithClassicDesktopLifetime(paths);
+    }
+
+    /// <summary>An installer hook: must be quick and must never fail the install.</summary>
+    private static void SetUpShell(bool install)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try
+        {
+            var shell = ShellIntegration.ForThisApp();
+            _ = install ? shell.Install() : shell.Uninstall();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            // Coder works without it; the command palette can try again.
+        }
     }
 
     /// <summary>

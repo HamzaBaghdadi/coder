@@ -39,10 +39,11 @@ public sealed class TerminalSession : IDisposable
     public bool HasExited { get; private set; }
 
     /// <param name="commandLine">The shell to run; null for the default (PowerShell).</param>
-    public static TerminalSession Start(string workingDirectory, int columns, int rows, string? commandLine = null)
+    /// <param name="environment">Extra variables for the shell; null for none.</param>
+    public static TerminalSession Start(string workingDirectory, int columns, int rows, string? commandLine = null, IReadOnlyDictionary<string, string>? environment = null)
     {
         var emulator = new TerminalEmulator(columns, rows);
-        return new TerminalSession(PseudoTerminal.StartShell(commandLine, workingDirectory, columns, rows), emulator);
+        return new TerminalSession(PseudoTerminal.StartShell(commandLine, workingDirectory, columns, rows, environment), emulator);
     }
 
     /// <summary>Sends typed keys to the shell.</summary>

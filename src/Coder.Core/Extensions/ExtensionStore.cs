@@ -11,7 +11,9 @@ namespace Coder.Core.Extensions;
 /// <para>
 /// Safe by construction: packages are checked against their SHA-256 when the source publishes one,
 /// size-limited, extracted into a staging folder (no entry may escape it) and only then moved into
-/// place. Nothing in a package is ever run.
+/// place. The store never runs anything: data extensions (themes, snippets) are only read, and an
+/// extension's program (<c>coder.program</c>) is started by the extension host, and only with the
+/// user's consent.
 /// </para>
 /// </summary>
 public sealed class ExtensionStore(string folder, HttpClient http)
@@ -20,12 +22,21 @@ public sealed class ExtensionStore(string folder, HttpClient http)
 
     /// <summary>Written next to package.json: the source the extension came from.</summary>
     private const string SourceFile = ".coder-source";
+
+    /// <summary>Written next to package.json: the SHA-256 of the package it was installed from.</summary>
+    private const string Sha256File = ".coder-sha256";
     private static readonly JsonDocumentOptions JsonOptions = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
 
     public string Folder => folder;
 
     /// <summary>Raised after an install or uninstall, so views and the theme list refresh.</summary>
     public event EventHandler? Changed;
+
+    /// <summary>
+    /// Called with an extension's id before its files are replaced or deleted, so its running program can
+    /// be stopped first (Windows won't delete a running program).
+    /// </summary>
+    public Func<string, Task>? BeforeRemoveAsync { get; set; }
 
     /// <summary>Installed extensions, newest version of each.</summary>
     public IReadOnlyList<InstalledExtension> Installed()
@@ -59,17 +70,23 @@ public sealed class ExtensionStore(string folder, HttpClient http)
         {
             await DownloadAsync(listing.DownloadUrl, package, cancellationToken);
             var expected = listing.Sha256 ?? (listing.Sha256Url is { } url ? await ReadHashAsync(url, cancellationToken) : null);
-            if (expected is not null)
+            string actual;
+            await using (var stream = File.OpenRead(package))
             {
-                await using var stream = File.OpenRead(package);
-                var actual = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken));
-                if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new ExtensionException($"{listing.DisplayName} wasn't installed: the download doesn't match what {listing.Source} published (its checksum differs).");
-                }
+                actual = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken));
             }
 
-            var installed = Install(package, listing);
+            if (expected is not null && !string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ExtensionException($"{listing.DisplayName} wasn't installed: the download doesn't match what {listing.Source} published (its checksum differs).");
+            }
+
+            if (BeforeRemoveAsync is { } beforeRemove && Find(listing.Id) is not null)
+            {
+                await beforeRemove(listing.Id); // an update replaces the running version
+            }
+
+            var installed = Install(package, listing, actual);
             Changed?.Invoke(this, EventArgs.Empty);
             return installed;
         }
@@ -84,6 +101,17 @@ public sealed class ExtensionStore(string folder, HttpClient http)
     {
         RemoveVersions(id);
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Stops the extension's program, if it runs one, then removes it.</summary>
+    public async Task UninstallAsync(string id)
+    {
+        if (BeforeRemoveAsync is { } beforeRemove)
+        {
+            await beforeRemove(id);
+        }
+
+        Uninstall(id);
     }
 
     /// <summary>Deletes the installed folders of an extension (never a staging folder).</summary>
@@ -104,7 +132,7 @@ public sealed class ExtensionStore(string folder, HttpClient http)
     }
 
     /// <summary>Unpacks a package (a .vsix or a plain zip) into place. Internal for tests.</summary>
-    internal InstalledExtension Install(string package, ExtensionListing listing)
+    internal InstalledExtension Install(string package, ExtensionListing listing, string? sha256 = null)
     {
         Directory.CreateDirectory(folder);
         var staging = Path.Combine(folder, $".staging-{Guid.NewGuid():N}");
@@ -118,10 +146,17 @@ public sealed class ExtensionStore(string folder, HttpClient http)
             }
 
             File.WriteAllText(Path.Combine(staging, SourceFile), listing.Source); // so Settings Sync knows where to find it again
+            if (sha256 is not null)
+            {
+                File.WriteAllText(Path.Combine(staging, Sha256File), sha256); // consent to run a program is for this exact package
+            }
+
             RemoveVersions(extension.Id); // one version at a time
             var target = Path.Combine(folder, $"{extension.Id}-{extension.Version}");
             Directory.Move(staging, target);
-            return extension with { Folder = target, Source = listing.Source };
+            var installed = Read(target) ?? extension with { Folder = target, Source = listing.Source };
+            MakeExecutable(installed.ProgramPath);
+            return installed;
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {
@@ -165,6 +200,20 @@ public sealed class ExtensionStore(string folder, HttpClient http)
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             entry.ExtractToFile(path, overwrite: true);
+            var mode = (UnixFileMode)((entry.ExternalAttributes >> 16) & 0x1FF); // a zip made on unix keeps permissions here
+            if (!OperatingSystem.IsWindows() && mode != UnixFileMode.None)
+            {
+                File.SetUnixFileMode(path, mode);
+            }
+        }
+    }
+
+    /// <summary>A program packed on Windows has no unix permissions in the zip: make it executable.</summary>
+    private static void MakeExecutable(string? program)
+    {
+        if (program is not null && !OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(program, File.GetUnixFileMode(program) | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
         }
     }
 
@@ -245,7 +294,14 @@ public sealed class ExtensionStore(string folder, HttpClient http)
             var themes = root.TryGetProperty("contributes", out var contributes) && contributes.TryGetProperty("themes", out var list) && list.ValueKind == JsonValueKind.Array
                 ? list.EnumerateArray().Select(t => String(t, "label") ?? String(t, "id")).OfType<string>().ToList()
                 : [];
+            var snippets = contributes.ValueKind == JsonValueKind.Object && contributes.TryGetProperty("snippets", out var snippetList) && snippetList.ValueKind == JsonValueKind.Array
+                ? snippetList.EnumerateArray().Where(s => String(s, "path") is not null).Select(s => String(s, "language") ?? "*").Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                : [];
             var display = String(root, "displayName");
+            var programs = root.TryGetProperty("coder", out var coder) && coder.ValueKind == JsonValueKind.Object
+                           && coder.TryGetProperty("program", out var program) && program.ValueKind == JsonValueKind.Object
+                ? program.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String).ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.OrdinalIgnoreCase)
+                : [];
             return new InstalledExtension(
                 $"{publisher}.{name}",
                 display is null || display.StartsWith('%') ? name : display,
@@ -256,7 +312,12 @@ public sealed class ExtensionStore(string folder, HttpClient http)
                 themes)
             {
                 IconPath = String(root, "icon") is { } icon && File.Exists(Path.Combine(directory, icon)) ? Path.GetFullPath(Path.Combine(directory, icon)) : null,
-                Source = File.Exists(Path.Combine(directory, SourceFile)) ? File.ReadAllText(Path.Combine(directory, SourceFile)).Trim() is { Length: > 0 } source ? source : null : null,
+                SnippetLanguages = snippets,
+                DeclaresProgram = programs.Count > 0,
+                ProgramPath = programs.TryGetValue(Platform.RuntimeId, out var relative) ? Inside(directory, relative) : null,
+                Commands = Commands(contributes, display is null || display.StartsWith('%') ? name : display),
+                Source = TextFile(directory, SourceFile),
+                PackageSha256 = TextFile(directory, Sha256File),
             };
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
@@ -267,6 +328,60 @@ public sealed class ExtensionStore(string folder, HttpClient http)
 
     private static string? String(JsonElement element, string name) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    private static string? TextFile(string directory, string name) =>
+        File.Exists(Path.Combine(directory, name)) && File.ReadAllText(Path.Combine(directory, name)).Trim() is { Length: > 0 } text ? text : null;
+
+    /// <summary>A path the manifest names, when it is a file inside the extension's folder.</summary>
+    private static string? Inside(string directory, string relative)
+    {
+        var root = Path.GetFullPath(directory) + Path.DirectorySeparatorChar;
+        var path = Path.GetFullPath(Path.Combine(directory, relative));
+        return path.StartsWith(root, StringComparison.OrdinalIgnoreCase) && File.Exists(path) ? path : null;
+    }
+
+    /// <summary>
+    /// VS Code's <c>contributes.commands</c> (<c>{ command, title, category }</c>) with the keys from
+    /// <c>contributes.keybindings</c> (<c>{ command, key: "ctrl+shift+k" }</c>) in Coder's gesture text.
+    /// </summary>
+    private static List<ExtensionCommand> Commands(JsonElement contributes, string extensionName)
+    {
+        if (contributes.ValueKind != JsonValueKind.Object || !contributes.TryGetProperty("commands", out var commands) || commands.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var keys = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (contributes.TryGetProperty("keybindings", out var bindings) && bindings.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var binding in bindings.EnumerateArray())
+            {
+                if (String(binding, "command") is { } command && (String(binding, OperatingSystem.IsMacOS() ? "mac" : "key") ?? String(binding, "key")) is { } key)
+                {
+                    keys.TryAdd(command, Gesture(key));
+                }
+            }
+        }
+
+        return commands.EnumerateArray()
+            .Select(c => (Id: String(c, "command"), Title: String(c, "title"), Category: String(c, "category")))
+            .Where(c => c.Id is { Length: > 0 } && c.Title is { Length: > 0 })
+            .Select(c => new ExtensionCommand(c.Id!, c.Category is { Length: > 0 } category ? category : extensionName, c.Title!, keys.GetValueOrDefault(c.Id!)))
+            .ToList();
+    }
+
+    /// <summary>"ctrl+k ctrl+t" → "Ctrl+K Ctrl+T", "ctrl+escape" → "Ctrl+Escape".</summary>
+    internal static string Gesture(string key) =>
+        string.Join(' ', key.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(chord =>
+            string.Join('+', chord.Split('+').Select(part => part.ToLowerInvariant() switch
+            {
+                "ctrl" => "Ctrl",
+                "shift" => "Shift",
+                "alt" => "Alt",
+                "cmd" or "meta" or "win" => "Meta",
+                var other when other.Length == 1 => other.ToUpperInvariant(),
+                var other => char.ToUpperInvariant(other[0]) + other[1..],
+            }))));
 
     /// <summary>Compares "1.10.0" and "1.9.2" as versions (pre-release suffixes ignored).</summary>
     internal static int CompareVersions(string a, string b) =>

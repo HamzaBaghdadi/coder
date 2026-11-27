@@ -19,6 +19,7 @@ public sealed class LanguageOverlay : Canvas
     private readonly CodeEditor _editor;
     private readonly WorkbenchViewModel _workbench;
     private readonly CompletionWidget _completion;
+    private readonly CompletionDetailsCard _details = new();
     private readonly HoverCard _hover = new();
     private readonly SignatureHelpCard _signature = new();
     private readonly DispatcherTimer _hideHover;
@@ -31,6 +32,7 @@ public sealed class LanguageOverlay : Canvas
         _completion = new CompletionWidget(workbench.Completion);
         ClipToBounds = true;
         Children.Add(_completion);
+        Children.Add(_details);
         Children.Add(_hover);
         Children.Add(_signature);
 
@@ -96,6 +98,20 @@ public sealed class LanguageOverlay : Canvas
             return;
         }
 
+        // An AI inline suggestion (shown only while no list is open): Tab takes it, Ctrl+Right its next word, Esc drops it.
+        if (!completion.IsOpen && TryHandleInlineSuggestion(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        // Tab with no list open expands an Emmet abbreviation (HTML), else it indents as usual.
+        if (e.Key == Key.Tab && e.KeyModifiers == KeyModifiers.None && !completion.IsOpen && completion.TryExpandAbbreviation())
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (!completion.IsOpen || e.KeyModifiers != KeyModifiers.None)
         {
             return;
@@ -129,6 +145,18 @@ public sealed class LanguageOverlay : Canvas
         e.Handled = true;
     }
 
+    private bool TryHandleInlineSuggestion(KeyEventArgs e)
+    {
+        var suggestions = _workbench.InlineSuggestions;
+        return (e.Key, e.KeyModifiers) switch
+        {
+            (Key.Tab, KeyModifiers.None) => suggestions.Accept(),
+            (Key.Right, KeyModifiers.Control) => suggestions.AcceptNextWord(),
+            (Key.Escape, KeyModifiers.None) => suggestions.Dismiss(),
+            _ => false,
+        };
+    }
+
     /// <summary>Under the word being completed, labels aligned with the typed text; above it when there is no room below.</summary>
     private void PlaceCompletion()
     {
@@ -137,6 +165,7 @@ public sealed class LanguageOverlay : Canvas
             || _editor.TextArea(this) is not { } area || !area.Contains(anchor.Center))
         {
             _completion.IsVisible = false;
+            _details.IsVisible = false;
             return;
         }
 
@@ -151,7 +180,38 @@ public sealed class LanguageOverlay : Canvas
         SetLeft(_completion, left);
         SetTop(_completion, top);
         _completion.IsVisible = true;
+        PlaceDetails(left, top, height);
         HideHover();
+    }
+
+    /// <summary>The highlighted item's details beside the list: to its right, else its left, else not at all.</summary>
+    private void PlaceDetails(double listLeft, double listTop, double listHeight)
+    {
+        if (!_details.Show(_workbench.Completion.SelectedItem))
+        {
+            _details.IsVisible = false;
+            return;
+        }
+
+        _details.IsVisible = true; // hidden controls measure as empty
+        _details.Measure(new Size(CompletionDetailsCard.MaxCardWidth, Bounds.Height));
+        var size = _details.DesiredSize;
+        const double gap = 4;
+        var left = listLeft + CompletionWidget.ListWidth + gap;
+        if (left + size.Width > Bounds.Width)
+        {
+            left = listLeft - gap - size.Width;
+        }
+
+        if (left < 0)
+        {
+            _details.IsVisible = false;
+            return;
+        }
+
+        // Level with the list's top, moved up when a tall preview would run off the bottom.
+        SetLeft(_details, left);
+        SetTop(_details, Math.Max(0, Math.Min(listTop, Bounds.Height - size.Height)));
     }
 
     /// <summary>Above the caret's line (below when there is no room), so the suggestion list below stays visible.</summary>

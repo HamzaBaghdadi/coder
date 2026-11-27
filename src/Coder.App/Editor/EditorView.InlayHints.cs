@@ -26,16 +26,32 @@ public sealed partial class EditorView
         InvalidateVisual();
     }
 
-    /// <summary>A line's hints as insertions at display indexes (tabs expanded).</summary>
+    /// <summary>A line's hints (and the inline suggestion on the caret's line) as insertions at display indexes (tabs expanded).</summary>
     private IReadOnlyList<LineInsertion> InsertionsOf(int line)
     {
         var hints = _inlayHints(line);
-        if (hints.Count == 0)
+        var isSuggestionLine = _suggestionLine == line;
+        if (hints.Count == 0 && !isSuggestionLine)
         {
             return [];
         }
 
         var text = _editor!.Document.GetLineText(line);
+        if (isSuggestionLine && SuggestionInsertion(line, text) is { } suggestion)
+        {
+            return [.. HintInsertions(hints, text).Append(suggestion).OrderBy(i => i.At)]; // stable: a hint at the caret stays before the ghost text
+        }
+
+        return HintInsertions(hints, text);
+    }
+
+    private List<LineInsertion> HintInsertions(IReadOnlyList<InlayHint> hints, string text)
+    {
+        if (hints.Count == 0)
+        {
+            return [];
+        }
+
         return hints
             .Select(hint => new LineInsertion(
                 DisplayIndex(text, Math.Min(hint.Position.Column, text.Length)),

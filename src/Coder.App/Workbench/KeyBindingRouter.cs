@@ -23,18 +23,37 @@ public sealed class KeyBindingRouter
         CommandIds.SplitTerminal,
     ];
 
-    private readonly List<(KeyGesture[] Keys, CommandDefinition Command)> _bindings;
+    private readonly CommandRegistry _commands;
     private readonly Action<string> _showMessage;
+    private List<(KeyGesture[] Keys, CommandDefinition Command)> _bindings = [];
     private KeyGesture? _chordStart;
 
     /// <param name="showMessage">Tells the user a chord is waiting for its second key, or didn't match.</param>
     public KeyBindingRouter(CommandRegistry commands, Action<string>? showMessage = null)
     {
+        _commands = commands;
         _showMessage = showMessage ?? (_ => { });
-        _bindings = commands.All
-            .Where(command => command.KeyBinding is not null)
-            .Select(command => (command.KeyBinding!.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(KeyGesture.Parse).ToArray(), command))
-            .ToList();
+        Rebuild();
+        commands.Changed += (_, _) => Rebuild(); // extensions add and remove commands while Coder runs
+    }
+
+    /// <summary>Reads every command's binding; one an extension wrote that Avalonia can't parse is left out.</summary>
+    private void Rebuild()
+    {
+        var bindings = new List<(KeyGesture[] Keys, CommandDefinition Command)>();
+        foreach (var command in _commands.All.Where(c => c.KeyBinding is not null))
+        {
+            try
+            {
+                bindings.Add((command.KeyBinding!.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(KeyGesture.Parse).ToArray(), command));
+            }
+            catch (Exception exception) when (exception is ArgumentException or FormatException)
+            {
+                // a key Coder doesn't know: the command still runs from the palette
+            }
+        }
+
+        _bindings = bindings;
     }
 
     /// <summary>Runs the command bound to the pressed keys. Returns true when the keys were used.</summary>

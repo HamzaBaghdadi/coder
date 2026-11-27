@@ -26,12 +26,13 @@ public static class PseudoTerminal
 
     /// <param name="commandLine">The shell to run (see <see cref="Coder.Core.Terminal.ShellProfiles"/>); null for the default shell.</param>
     /// <exception cref="PlatformNotSupportedException">On systems without a supported pseudo-terminal yet.</exception>
-    public static IPseudoTerminal StartShell(string? commandLine, string workingDirectory, int columns, int rows)
+    /// <param name="environment">Extra variables for the shell (an extension's terminal); null for none.</param>
+    public static IPseudoTerminal StartShell(string? commandLine, string workingDirectory, int columns, int rows, IReadOnlyDictionary<string, string>? environment = null)
     {
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763))
         {
             commandLine ??= Coder.Core.Terminal.ShellProfiles.Resolve(Coder.Core.Terminal.ShellProfiles.Detect(), null)?.CommandLine ?? "powershell.exe -NoLogo";
-            return new WindowsPseudoTerminal(commandLine, workingDirectory, columns, rows);
+            return new WindowsPseudoTerminal(commandLine, workingDirectory, columns, rows, environment);
         }
 
         throw new PlatformNotSupportedException("The integrated terminal currently needs Windows 10 (1809) or later.");

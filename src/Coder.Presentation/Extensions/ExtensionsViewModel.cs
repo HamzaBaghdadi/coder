@@ -42,7 +42,7 @@ public sealed class ExtensionsViewModel : ObservableObject, IDisposable
     public bool HasSources => _sources.Count > 0;
 
     /// <summary>"Themes from Open VSX", or "Themes from Open VSX and Coder".</summary>
-    public string SourcesLabel => $"MARKETPLACE · {string.Join(" + ", _sources.Select(s => s.Name.ToUpperInvariant()))}";
+    public string SourcesLabel => $"Marketplace · {string.Join(" + ", _sources.Select(s => s.Name))}";
 
     public string Query
     {
@@ -123,7 +123,7 @@ public sealed class ExtensionsViewModel : ObservableObject, IDisposable
             search.Token.ThrowIfCancellationRequested();
             var installed = _store.Installed().ToDictionary(e => e.Id, StringComparer.OrdinalIgnoreCase);
             Results.Clear();
-            foreach (var listing in found.DistinctBy(l => l.Id, StringComparer.OrdinalIgnoreCase).Where(l => !installed.ContainsKey(l.Id)))
+            foreach (var listing in Rank(found.DistinctBy(l => l.Id, StringComparer.OrdinalIgnoreCase).Where(l => !installed.ContainsKey(l.Id)), _query))
             {
                 Results.Add(new ExtensionItemViewModel(this, listing, null));
             }
@@ -176,7 +176,7 @@ public sealed class ExtensionsViewModel : ObservableObject, IDisposable
         }
     }
 
-    internal void Uninstall(ExtensionItemViewModel item)
+    internal async Task UninstallAsync(ExtensionItemViewModel item)
     {
         if (item.Installed is not { } installed)
         {
@@ -185,7 +185,7 @@ public sealed class ExtensionsViewModel : ObservableObject, IDisposable
 
         try
         {
-            _store.Uninstall(installed.Id);
+            await _store.UninstallAsync(installed.Id); // stops its program first, if it runs one
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -222,6 +222,57 @@ public sealed class ExtensionsViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Search results in order of relevance. Marketplaces search loosely (Open VSX answers "dracula" with
+    /// any popular theme), so a result is kept only when every word of the query is in its name, id,
+    /// publisher or description; names that match come before descriptions that do, then by downloads.
+    /// With no query, the popular list comes as the sources sent it.
+    /// </summary>
+    public static IEnumerable<ExtensionListing> Rank(IEnumerable<ExtensionListing> listings, string query)
+    {
+        var words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (words.Length == 0)
+        {
+            return listings;
+        }
+
+        var phrase = string.Join(' ', words);
+        return listings
+            .Select(l => (Listing: l, Score: Relevance(l, words, phrase)))
+            .Where(r => r.Score > 0)
+            .OrderByDescending(r => r.Score)
+            .ThenByDescending(r => r.Listing.DownloadCount)
+            .Select(r => r.Listing);
+    }
+
+    private static int Relevance(ExtensionListing listing, string[] words, string phrase)
+    {
+        static bool Has(string text, string word) => text.Contains(word, StringComparison.OrdinalIgnoreCase);
+        var name = listing.DisplayName;
+        var id = listing.Id;
+        if (string.Equals(name, phrase, StringComparison.OrdinalIgnoreCase) || string.Equals(id, phrase, StringComparison.OrdinalIgnoreCase))
+        {
+            return 5; // exactly what was typed
+        }
+
+        if (name.StartsWith(phrase, StringComparison.OrdinalIgnoreCase))
+        {
+            return 4;
+        }
+
+        if (words.All(w => Has(name, w)))
+        {
+            return 3;
+        }
+
+        if (words.All(w => Has(name, w) || Has(id, w) || Has(listing.Publisher, w)))
+        {
+            return 2;
+        }
+
+        return words.All(w => Has(name, w) || Has(id, w) || Has(listing.Publisher, w) || Has(listing.Description, w)) ? 1 : 0;
+    }
+
     private static bool Matches(InstalledExtension extension, string query) =>
         query.Split(' ', StringSplitOptions.RemoveEmptyEntries).All(word =>
             extension.DisplayName.Contains(word, StringComparison.OrdinalIgnoreCase) || extension.Id.Contains(word, StringComparison.OrdinalIgnoreCase));
@@ -240,7 +291,7 @@ public sealed class ExtensionItemViewModel : ObservableObject
         Listing = listing;
         Installed = installed;
         Install = new RelayCommand(() => _ = _owner.InstallAsync(this));
-        Uninstall = new RelayCommand(() => _owner.Uninstall(this));
+        Uninstall = new RelayCommand(() => _ = _owner.UninstallAsync(this));
         SetTheme = new RelayCommand(() => _ = _owner.SetThemeAsync(this));
     }
 
@@ -264,10 +315,32 @@ public sealed class ExtensionItemViewModel : ObservableObject
 
     public string? IconPath => Installed?.IconPath;
 
-    /// <summary>"dracula-theme · 474K installs · Open VSX", or "dracula-theme · 2 themes".</summary>
+    /// <summary>"dracula-theme · 474K installs · Open VSX", "dracula-theme · 2 themes" or "coder · snippets for csharp, razor".</summary>
     public string Details => Installed is { } installed
-        ? $"{installed.Publisher} · {(installed.Themes.Count == 1 ? "1 theme" : $"{installed.Themes.Count} themes")}"
-        : $"{Listing!.Publisher}{(Listing.Verified ? " ✓" : string.Empty)} · {Count(Listing.DownloadCount)} installs · {Listing.Source}";
+        ? $"{installed.Publisher} · {Contents(installed)}"
+        : $"{Listing!.Publisher}{(Listing.Verified ? " ✓" : string.Empty)} · {Count(Listing.DownloadCount)} installs · {Listing.Source}{(Listing.RunsProgram ? " · runs a program" : string.Empty)}";
+
+    private static string Contents(InstalledExtension installed)
+    {
+        var parts = new List<string>();
+        if (installed.Themes.Count > 0 || (installed.SnippetLanguages.Count == 0 && !installed.DeclaresProgram))
+        {
+            parts.Add(installed.Themes.Count == 1 ? "1 theme" : $"{installed.Themes.Count} themes");
+        }
+
+        if (installed.SnippetLanguages.Count > 0)
+        {
+            var languages = installed.SnippetLanguages.Where(l => l != "*").ToList();
+            parts.Add(languages.Count == 0 ? "snippets" : $"snippets for {string.Join(", ", languages)}");
+        }
+
+        if (installed.DeclaresProgram)
+        {
+            parts.Add(installed.ProgramPath is null ? "runs a program (not built for this computer)" : "runs a program");
+        }
+
+        return string.Join(" · ", parts);
+    }
 
     public bool IsBusy
     {

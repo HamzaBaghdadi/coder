@@ -52,11 +52,24 @@ public sealed class ProblemsView : Panel
             }
         });
 
-        var empty = new TextBlock
+        // A quiet empty state: an icon over one line of help text, top-aligned and centered.
+        var empty = new StackPanel
         {
-            Text = "No problems have been detected in the workspace.",
-            Foreground = Palette.TextSecondary,
-            Margin = new Thickness(Spacing.L, Spacing.S),
+            Margin = new Thickness(Spacing.L, Spacing.XL),
+            Spacing = Spacing.S,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
+            Children =
+            {
+                new Icon(Icons.Check, 20) { Foreground = Palette.TextSecondary, HorizontalAlignment = HorizontalAlignment.Center },
+                new TextBlock
+                {
+                    Classes = { "secondary" },
+                    Text = "No problems have been detected in the workspace.",
+                    TextWrapping = TextWrapping.Wrap,
+                    TextAlignment = TextAlignment.Center,
+                },
+            },
         }.Bind(IsVisibleProperty, problems, x => x.IsEmpty);
 
         Children.Add(list);
@@ -75,13 +88,13 @@ public sealed class ProblemsView : Panel
             {
                 FileIcons.File(file.Path),
                 new TextBlock { Text = file.FileName, VerticalAlignment = VerticalAlignment.Center },
-                new TextBlock { Text = file.Folder, FontSize = Typography.SmallSize, Foreground = Palette.TextMuted, VerticalAlignment = VerticalAlignment.Center },
+                new TextBlock { Text = file.Folder, FontSize = Typography.SmallSize, Foreground = Palette.TextSecondary, VerticalAlignment = VerticalAlignment.Center },
                 new Border
                 {
                     MinWidth = 18,
                     Height = 18,
                     Padding = new Thickness(5, 0),
-                    CornerRadius = new CornerRadius(9),
+                    CornerRadius = new CornerRadius(9), // a pill: half the height
                     Background = Palette.Pressed,
                     VerticalAlignment = VerticalAlignment.Center,
                     Child = new TextBlock
@@ -120,7 +133,7 @@ public sealed class ProblemsView : Panel
                 {
                     Text = $"{source} {item.Position}".Trim(),
                     FontSize = Typography.SmallSize,
-                    Foreground = Palette.TextMuted,
+                    Foreground = Palette.TextSecondary,
                     Margin = new Thickness(8, 0, 0, 0),
                     VerticalAlignment = VerticalAlignment.Center,
                 }.Dock(Dock.Right),

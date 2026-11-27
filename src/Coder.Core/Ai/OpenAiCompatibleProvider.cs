@@ -183,6 +183,11 @@ public sealed class OpenAiCompatibleProvider(HttpClient http, AiProviderConfig c
             writer.WriteNumber("temperature", temperature);
         }
 
+        if (chat.MaxTokens is { } maxTokens)
+        {
+            writer.WriteNumber("max_tokens", maxTokens);
+        }
+
         writer.WriteStartArray("messages");
         foreach (var message in chat.Messages)
         {

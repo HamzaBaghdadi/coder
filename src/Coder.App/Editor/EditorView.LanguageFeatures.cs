@@ -176,6 +176,7 @@ public sealed partial class EditorView
         base.OnPointerExited(e);
         EndHover();
         MinimapPointerExited();
+        StickyPointerExited();
         _pointer = null;
         UpdateCtrlLink(null, KeyModifiers.None);
     }

@@ -190,7 +190,7 @@ public sealed partial class TerminalView
             return new RowRun(column, cellCount, null, background, 1);
         }
 
-        var typeface = new Typeface(Typography.Code,
+        var typeface = new Typeface(_family,
             attributes.HasFlag(CellAttributes.Italic) ? FontStyle.Italic : FontStyle.Normal,
             attributes.HasFlag(CellAttributes.Bold) ? FontWeight.Bold : FontWeight.Normal);
         var decorations = attributes.HasFlag(CellAttributes.Underline) ? TextDecorations.Underline

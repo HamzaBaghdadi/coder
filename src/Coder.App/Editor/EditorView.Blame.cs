@@ -24,7 +24,7 @@ public sealed partial class EditorView
     }
 
     /// <summary>For tests: the annotation shown now, if any.</summary>
-    internal string? ShownBlame => _editor is { } editor && editor.Selections.All.Count == 1 && editor.Selection.IsEmpty
+    internal string? ShownBlame => _editor is { } editor && editor.Selections.All.Count == 1 && editor.Selection.IsEmpty && CurrentSuggestion() is null
         ? _blame(editor.CaretPosition.Line)
         : null;
 

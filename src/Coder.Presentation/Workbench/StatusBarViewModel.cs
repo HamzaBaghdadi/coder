@@ -67,16 +67,20 @@ public sealed class StatusBarViewModel : ObservableObject
         if (_tab is not null)
         {
             _tab.Editor.SelectionChanged -= OnSelectionChanged;
+            _tab.OptionsChanged -= OnOptionsChanged;
         }
 
         _tab = tab;
         if (_tab is not null)
         {
             _tab.Editor.SelectionChanged += OnSelectionChanged;
+            _tab.OptionsChanged += OnOptionsChanged;
         }
 
         OnPropertyChanged(string.Empty); // Every text depends on the tab.
     }
 
     private void OnSelectionChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(CursorText));
+
+    private void OnOptionsChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(IndentText));
 }

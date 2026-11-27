@@ -9,6 +9,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using Coder.App.Controls;
 using Coder.App.Mvvm;
@@ -37,13 +38,13 @@ public sealed class AgentView : DockPanel, IPathDropTarget
     public AgentView(AgentViewModel agent)
     {
         _agent = agent;
-        Background = Palette.SideBar;
+        Background = Brushes.Transparent; // the secondary side bar panel shows through
         DragDrop.SetAllowDrop(this, true);
 
         var newChat = new FlatButton(Icons.Plus, "New Chat") { Command = agent.NewChatCommand };
         var providers = new FlatButton(Icons.Key, "Providers and API Keys") { Command = agent.ToggleProvidersCommand }
             .BindClass("active", agent, a => a.IsProvidersOpen);
-        Children.Add(SideBarHeader.Create("CODER AGENT", newChat, providers).Dock(Dock.Top));
+        Children.Add(SideBarHeader.Create("Coder Agent", newChat, providers).Dock(Dock.Top));
 
         _input = new TextBox
         {
@@ -53,8 +54,9 @@ public sealed class AgentView : DockPanel, IPathDropTarget
             MaxHeight = 240,
             BorderThickness = new Thickness(0),
             Background = Brushes.Transparent,
-            Padding = new Thickness(Spacing.S, Spacing.S, Spacing.S, Spacing.XS),
+            Padding = new Thickness(Spacing.M, Spacing.M, Spacing.M, Spacing.XS),
             PlaceholderText = "Ask Coder Agent… Drop files or paste images",
+            Styles = { CommandPaletteView.BorderlessField() }, // the composer card draws the field's edge and focus
         }.Bind(TextBox.TextProperty, agent, x => x.Input, Avalonia.Data.BindingMode.TwoWay);
         AutomationProperties.SetName(_input, "Message Coder Agent");
         _input.AddHandler(KeyDownEvent, OnInputKeyDown, RoutingStrategies.Tunnel);
@@ -100,6 +102,7 @@ public sealed class AgentView : DockPanel, IPathDropTarget
             Background = Palette.Selected,
             BorderBrush = Palette.Accent,
             BorderThickness = new Thickness(2),
+            CornerRadius = Spacing.RadiusLarge,
             Margin = new Thickness(Spacing.S),
             Child = new StackPanel
             {
@@ -179,17 +182,26 @@ public sealed class AgentView : DockPanel, IPathDropTarget
         AutomationProperties.SetName(model, "Pick Model");
         model.Bind(ToolTip.TipProperty, _agent, x => x.ModelLabel, label => $"Model: {label}");
 
-        var send = new FlatButton(Icons.Send, "Send (Enter)", 16) { Classes = { "primary" }, Command = _agent.SendCommand }
+        // Send: a small solid accent square with rounded corners (the primary colors).
+        var send = new FlatButton(Icons.Send, "Send (Enter)", 14)
+        {
+            Classes = { "primary" },
+            Command = _agent.SendCommand,
+            Width = 28,
+            Height = 28,
+            Padding = new Thickness(0),
+            Radius = Spacing.RadiusMedium.TopLeft,
+        }
             .Bind(IsVisibleProperty, _agent, x => x.IsBusy, busy => !busy)
             .Bind(IsEnabledProperty, _agent, x => x.CanSend);
-        var stop = new FlatButton(Icons.Stop, "Stop (Escape)", 16) { Command = _agent.StopCommand, BorderBrush = Palette.BorderStrong }
+        var stop = new FlatButton(Icons.Stop, "Stop (Escape)", 14) { Classes = { "secondary" }, Command = _agent.StopCommand, Width = 28, Height = 28, Padding = new Thickness(0) }
             .Bind(IsVisibleProperty, _agent, x => x.IsBusy);
         var usage = new TextBlock { FontSize = Typography.CaptionSize, Foreground = Palette.TextMuted, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Spacing.S, 0) }
             .Bind(TextBlock.TextProperty, _agent, x => x.Usage);
 
         var toolbar = new DockPanel
         {
-            Margin = new Thickness(Spacing.XS, 0, Spacing.XS, Spacing.XS),
+            Margin = new Thickness(Spacing.S, 0, Spacing.S, Spacing.S),
             Children =
             {
                 attach.Dock(Dock.Left),
@@ -199,13 +211,25 @@ public sealed class AgentView : DockPanel, IPathDropTarget
             },
         };
 
-        var box = new ChamferBorder
+        // A rounded card; its border turns accent with the focus halo while the text box inside has focus.
+        // Both states come from styles (a local BorderBrush would win over them).
+        var box = new Border
         {
             Classes = { "composer" },
-            Background = Palette.EditorBackground,
-            BorderBrush = Palette.InputBorder,
-            BorderThickness = 1,
-            Chamfer = Spacing.ChamferMedium,
+            Background = Palette.Elevated,
+            BorderThickness = new Thickness(1),
+            CornerRadius = Spacing.RadiusLarge,
+            Styles =
+            {
+                new Style(x => x.OfType<Border>().Class("composer"))
+                {
+                    Setters = { new Setter(Border.BorderBrushProperty, Palette.InputBorder) },
+                },
+                new Style(x => x.OfType<Border>().Class("composer").Class(":focus-within"))
+                {
+                    Setters = { new Setter(Border.BorderBrushProperty, Palette.Accent) },
+                },
+            },
             Child = new DockPanel
             {
                 Children =
@@ -216,14 +240,40 @@ public sealed class AgentView : DockPanel, IPathDropTarget
                 },
             },
         };
-        _input.GotFocus += (_, _) => box.BorderBrush = Palette.Accent;
-        _input.LostFocus += (_, _) => box.BorderBrush = Palette.InputBorder;
+        BindFocusHalo(box);
 
         return new StackPanel
         {
             Margin = new Thickness(Spacing.S, 0, Spacing.S, Spacing.S),
             Children = { notice, box },
         };
+    }
+
+    /// <summary>
+    /// The focus halo (<see cref="Palette.FocusRing"/>) around the composer while focus is inside it. A shadow
+    /// takes a color, not a brush, so the style is rebuilt when the theme changes.
+    /// </summary>
+    private static void BindFocusHalo(Border box)
+    {
+        Style? halo = null;
+        void Apply()
+        {
+            if (halo is not null)
+            {
+                box.Styles.Remove(halo);
+            }
+
+            var ring = Palette.FocusRing;
+            var color = Color.FromArgb((byte)Math.Round(ring.Opacity * ring.Color.A), ring.Color.R, ring.Color.G, ring.Color.B);
+            halo = new Style(x => x.OfType<Border>().Class("composer").Class(":focus-within"))
+            {
+                Setters = { new Setter(Border.BoxShadowProperty, new BoxShadows(new BoxShadow { Spread = 3, Color = color })) },
+            };
+            box.Styles.Add(halo);
+        }
+
+        Apply();
+        ThemeManager.Changed += (_, _) => Apply();
     }
 
     private Control EmptyState()
@@ -263,7 +313,7 @@ public sealed class AgentView : DockPanel, IPathDropTarget
             Children =
             {
                 new Icon(Icons.Sparkle, 36) { Foreground = Palette.AccentBright, HorizontalAlignment = HorizontalAlignment.Center },
-                new TextBlock { Text = "Coder Agent", FontSize = 16, FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Center },
+                new TextBlock { Text = "Coder Agent", Classes = { "title" }, HorizontalAlignment = HorizontalAlignment.Center },
                 new TextBlock
                 {
                     Text = "Ask about your code, or ask for a change. The agent reads and searches the open folder; every edit comes to you as a diff to accept, and every command waits for your OK.",

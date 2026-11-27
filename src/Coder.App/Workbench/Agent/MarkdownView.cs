@@ -59,13 +59,13 @@ public sealed class MarkdownView : StackPanel
 
     public static Control Block(ChatBlock block) => block.Kind switch
     {
-        ChatBlockKind.Heading => Paragraph(block.Spans, block.Level switch { 1 => 18, 2 => 16, _ => 14 }, FontWeight.SemiBold),
+        ChatBlockKind.Heading => Paragraph(block.Spans, block.Level switch { 1 or 2 => Typography.TitleSize, _ => Typography.UiSize }, Typography.Strong),
         ChatBlockKind.ListItem => new DockPanel
         {
             Margin = new Thickness(Tokens.S + block.Level * Tokens.L, 0, 0, 0),
             Children =
             {
-                new TextBlock { Text = block.Marker, Foreground = Palette.TextSecondary, MinWidth = 16, Margin = new Thickness(0, 0, 6, 0) }.Dock(Dock.Left),
+                new TextBlock { Text = block.Marker, Foreground = Palette.TextSecondary, MinWidth = 16, Margin = new Thickness(0, 0, Tokens.XS, 0) }.Dock(Dock.Left),
                 Paragraph(block.Spans),
             },
         },
@@ -73,7 +73,7 @@ public sealed class MarkdownView : StackPanel
         {
             BorderBrush = Palette.BorderStrong,
             BorderThickness = new Thickness(3, 0, 0, 0),
-            Padding = new Thickness(Tokens.S, 2),
+            Padding = new Thickness(Tokens.M, Tokens.XXS),
             Child = Paragraph(block.Spans, foreground: Palette.TextSecondary),
         },
         ChatBlockKind.Code => CodeBlock(block),
@@ -113,7 +113,7 @@ public sealed class MarkdownView : StackPanel
             case InlineKind.Strike:
                 return new Run(span.Text) { TextDecorations = TextDecorations.Strikethrough };
             case InlineKind.Code:
-                return new Run(span.Text) { FontFamily = Typography.Code, FontSize = 12.5, Foreground = Palette.AccentBright, Background = Palette.Hover };
+                return new Run(span.Text) { FontFamily = Typography.Code, FontSize = Typography.SmallSize, Foreground = Palette.AccentBright, Background = Palette.Pressed };
             case InlineKind.Link when Uri.TryCreate(span.Url, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp):
                 var link = new TextBlock
                 {
@@ -154,21 +154,22 @@ public sealed class MarkdownView : StackPanel
             }
         };
 
-        var code = CodeText.Create(block.Text, language ?? Languages.PlainText, 12.5, TextWrapping.NoWrap);
+        var code = CodeText.Create(block.Text, language ?? Languages.PlainText, Typography.SmallSize, TextWrapping.NoWrap);
         code.Margin = new Thickness(Tokens.M, Tokens.S);
-        return new ChamferBorder
+        return new Border
         {
             Background = Palette.EditorBackground,
             BorderBrush = Palette.Border,
-            BorderThickness = 1,
-            Chamfer = Tokens.ChamferSmall,
+            BorderThickness = new Thickness(1),
+            CornerRadius = Tokens.RadiusLarge,
+            ClipToBounds = true,
             Child = new DockPanel
             {
                 Children =
                 {
                     new DockPanel
                     {
-                        Margin = new Thickness(Tokens.M, 2, 2, 0),
+                        Margin = new Thickness(Tokens.M, Tokens.XS, Tokens.XS, 0),
                         Children =
                         {
                             copy.Dock(Dock.Right),
@@ -214,7 +215,7 @@ public sealed class MarkdownView : StackPanel
                     BorderBrush = Palette.Border,
                     BorderThickness = new Thickness(c == 0 ? 1 : 0, r == 0 ? 1 : 0, 1, 1),
                     Background = r == 0 ? Palette.Hover : null,
-                    Padding = new Thickness(Tokens.S, 2),
+                    Padding = new Thickness(Tokens.S, Tokens.XXS),
                     Child = cell,
                 }.Row(r).Column(c));
             }

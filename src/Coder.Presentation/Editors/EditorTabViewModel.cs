@@ -32,6 +32,7 @@ public sealed class EditorTabViewModel : TabViewModel
         Document.Changed += (_, change) =>
         {
             MapInlayHints(change);
+            MapSymbolScopes(change);
             if (_diagnostics.Count > 0)
             {
                 _diagnostics = _diagnostics.Select(marker => marker.Map(change)).ToList();
@@ -41,6 +42,11 @@ public sealed class EditorTabViewModel : TabViewModel
 
     /// <summary>Raised when a language server sends new diagnostics for this document.</summary>
     public event EventHandler? DiagnosticsChanged;
+
+    /// <summary>Raised when the editor's indentation options were replaced (settings, detection).</summary>
+    public event EventHandler? OptionsChanged;
+
+    public void NotifyOptionsChanged() => OptionsChanged?.Invoke(this, EventArgs.Empty);
 
     /// <summary>Problems in this document, kept in place while the user edits.</summary>
     public IReadOnlyList<DiagnosticMarker> Diagnostics => _diagnostics;
@@ -156,6 +162,37 @@ public sealed class EditorTabViewModel : TabViewModel
         }
 
         _inlayHints = mapped;
+    }
+
+    /// <summary>Raised when the language server's scopes (classes, methods…) were replaced.</summary>
+    public event EventHandler? SymbolScopesChanged;
+
+    /// <summary>
+    /// Blocks from the language server's document symbols, for sticky scroll; empty when there is no
+    /// server (the editor then finds blocks from brackets or indentation alone).
+    /// </summary>
+    public IReadOnlyList<ScopeRange> SymbolScopes { get; private set; } = [];
+
+    public void SetSymbolScopes(IReadOnlyList<ScopeRange> scopes)
+    {
+        SymbolScopes = scopes;
+        SymbolScopesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Moves the server's scopes with lines added or removed above them, until fresh ones arrive.</summary>
+    private void MapSymbolScopes(TextChange change)
+    {
+        var delta = change.InsertedLineBreaks - change.RemovedLineBreaks;
+        if (SymbolScopes.Count == 0 || delta == 0)
+        {
+            return;
+        }
+
+        var lastEdited = change.StartLine + change.RemovedLineBreaks;
+        SymbolScopes = SymbolScopes
+            .Select(s => new ScopeRange(s.StartLine > lastEdited ? s.StartLine + delta : s.StartLine, s.EndLine >= lastEdited ? s.EndLine + delta : s.EndLine))
+            .Where(s => s.EndLine > s.StartLine)
+            .ToList();
     }
 
     private IReadOnlyList<MergeConflict> _conflicts = [];

@@ -30,6 +30,9 @@ public interface IFileSystem
     /// <summary>Moves a file or folder (creating the target's folders), replacing an existing file when <paramref name="overwrite"/>.</summary>
     void Move(string from, string to, bool overwrite);
 
+    /// <summary>Copies a file, or a folder with everything in it, to a path that doesn't exist yet (creating its folders).</summary>
+    void Copy(string from, string to);
+
     /// <summary>Deletes a file, or a folder (with its contents when <paramref name="recursive"/>).</summary>
     void Delete(string path, bool recursive);
 

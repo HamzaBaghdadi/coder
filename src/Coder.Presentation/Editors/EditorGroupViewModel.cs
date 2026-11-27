@@ -104,8 +104,47 @@ public sealed class EditorGroupViewModel(IFileSystem fileSystem, IDialogService 
 
     public void NewUntitled() => Add(new EditorTabViewModel(null, string.Empty, new UTF8Encoding(false)));
 
-    public async Task<bool> SaveAsync(EditorTabViewModel tab, bool chooseLocation = false)
+    /// <summary>Indentation for files that don't show their own (the Tab Size and Insert Spaces settings).</summary>
+    public Func<Coder.Core.Editing.EditorOptions> DefaultOptions { get; set; } = () => new();
+
+    /// <summary>Whether a file's own indentation (tabs, 2 or 4 spaces…) overrides the defaults when it opens.</summary>
+    public Func<bool> DetectIndentation { get; set; } = () => true;
+
+    /// <summary>
+    /// Runs just before a tab is written: save clean-ups and format on save. Its flag says whether the save was
+    /// automatic (auto save), which skips formatting, as in VS Code.
+    /// </summary>
+    public Func<EditorTabViewModel, bool, Task>? BeforeSave { get; set; }
+
+    /// <summary>Gives a tab its indentation: the defaults, or what its text uses when detection is on.</summary>
+    public void ApplyOptions(EditorTabViewModel tab)
     {
+        var options = DefaultOptions() with { AutoClosePairs = tab.Editor.Options.AutoClosePairs };
+        if (DetectIndentation() && Coder.Core.Editing.Indentation.Detect(tab.Document) is { } detected)
+        {
+            options = options with { InsertSpaces = detected.InsertSpaces, TabSize = detected.InsertSpaces ? detected.TabSize : options.TabSize };
+        }
+
+        tab.Editor.Options = options;
+        tab.NotifyOptionsChanged();
+    }
+
+    /// <summary>The indentation settings changed: every open document takes them again.</summary>
+    public void ReapplyOptions()
+    {
+        foreach (var tab in Tabs.OfType<EditorTabViewModel>())
+        {
+            ApplyOptions(tab);
+        }
+    }
+
+    public async Task<bool> SaveAsync(EditorTabViewModel tab, bool chooseLocation = false, bool automatic = false)
+    {
+        if (BeforeSave is not null)
+        {
+            await BeforeSave(tab, automatic);
+        }
+
         var path = tab.FilePath;
         if (path is null || chooseLocation)
         {
@@ -200,6 +239,11 @@ public sealed class EditorGroupViewModel(IFileSystem fileSystem, IDialogService 
 
     private void Add(TabViewModel tab)
     {
+        if (tab is EditorTabViewModel document)
+        {
+            ApplyOptions(document);
+        }
+
         // Insert next to the current tab, which is where the user is looking.
         var index = ActiveTab is null ? Tabs.Count : Tabs.IndexOf(ActiveTab) + 1;
         Tabs.Insert(index, tab);

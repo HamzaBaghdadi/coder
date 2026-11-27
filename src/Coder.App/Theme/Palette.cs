@@ -7,8 +7,9 @@ namespace Coder.App.Theme;
 /// is one brush for the life of the app; switching themes changes its color, so every control using
 /// it follows without being rebuilt. Values come from a <see cref="ColorTheme"/>.
 /// <para>
-/// Surfaces step from the window frame inwards (each slightly lighter in the dark theme, slightly
-/// brighter in the light one) to express depth; color is reserved for meaning.
+/// The window is one shell surface (title bar, activity bar, side bar, status bar); the editor, panel and
+/// secondary side bar sit on it as inset, rounded panels, and overlays float one step lighter. Color is
+/// reserved for meaning.
 /// </para>
 /// </summary>
 public static class Palette
@@ -54,6 +55,13 @@ public static class Palette
     public static readonly SolidColorBrush Accent = Token(nameof(Accent));
     public static readonly SolidColorBrush AccentHover = Token(nameof(AccentHover));
     public static readonly SolidColorBrush AccentBright = Token(nameof(AccentBright));       // the logo's cyan highlight
+
+    /// <summary>Solid fill of primary buttons and badges; white text on it keeps at least 4.5:1.</summary>
+    public static readonly SolidColorBrush AccentFill = Token(nameof(AccentFill));
+    public static readonly SolidColorBrush AccentFillHover = Token(nameof(AccentFillHover));
+
+    /// <summary>The soft halo around a focused field (drawn outside its 1px accent border).</summary>
+    public static readonly SolidColorBrush FocusRing = Token(nameof(FocusRing));
     public static readonly SolidColorBrush Danger = Token(nameof(Danger));
     public static readonly SolidColorBrush Warning = Token(nameof(Warning));
     public static readonly SolidColorBrush Modified = Token(nameof(Modified));
@@ -84,6 +92,9 @@ public static class Palette
     // Inlay hints: parameter names and inferred types shown inside the code.
     public static readonly SolidColorBrush InlayHint = Token(nameof(InlayHint));
     public static readonly SolidColorBrush InlayHintBackground = Token(nameof(InlayHintBackground));
+
+    // AI inline suggestions: the gray text after the caret that Tab inserts.
+    public static readonly SolidColorBrush InlineSuggestion = Token(nameof(InlineSuggestion));
 
     // Git: explorer names, Source Control letters, side-by-side diffs, gutter change markers.
     public static readonly SolidColorBrush GitModified = Token(nameof(GitModified));

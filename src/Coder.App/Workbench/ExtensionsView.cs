@@ -30,9 +30,9 @@ public sealed class ExtensionsView : DockPanel
 
         var search = new TextBox
         {
-            Height = 30,
-            MinHeight = 30,
-            Padding = new Thickness(8, 5),
+            Height = 28,
+            MinHeight = 28,
+            Padding = new Thickness(Spacing.S, Spacing.XS),
             PlaceholderText = "Search themes in the marketplace",
             VerticalContentAlignment = VerticalAlignment.Center,
             Margin = new Thickness(Spacing.M, 0, Spacing.M, Spacing.S),
@@ -40,7 +40,7 @@ public sealed class ExtensionsView : DockPanel
         AutomationProperties.SetName(search, "Search extensions");
 
         var refresh = new FlatButton(Icons.Refresh, "Refresh Extensions") { Command = new RelayCommand(() => _ = extensions.SearchAsync()) };
-        Children.Add(SideBarHeader.Create("EXTENSIONS", refresh).Dock(Dock.Top));
+        Children.Add(SideBarHeader.Create("Extensions", refresh).Dock(Dock.Top));
         Children.Add(search.Dock(Dock.Top));
 
         var message = new TextBlock
@@ -64,7 +64,7 @@ public sealed class ExtensionsView : DockPanel
         {
             Children =
             {
-                Section("INSTALLED", extensions.Installed),
+                Section("Installed", extensions.Installed),
                 List(extensions.Installed),
                 Section(extensions.SourcesLabel, extensions.Results).Bind(IsVisibleProperty, extensions, x => x.HasSources),
                 searching,
@@ -88,10 +88,17 @@ public sealed class ExtensionsView : DockPanel
         });
     }
 
-    /// <summary>A section title with the number of items ("INSTALLED  2").</summary>
+    /// <summary>A section title with the number of items in a pill beside it.</summary>
     private static Control Section(string title, System.Collections.ObjectModel.ObservableCollection<ExtensionItemViewModel> items)
     {
-        var count = new TextBlock { Foreground = Palette.TextMuted, FontSize = Typography.CaptionSize, VerticalAlignment = VerticalAlignment.Center };
+        const double BadgeHeight = 18;
+        var count = new TextBlock
+        {
+            FontSize = Typography.CaptionSize,
+            Foreground = Palette.TextSecondary,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         void Update()
         {
             count.Text = items.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -106,8 +113,17 @@ public sealed class ExtensionsView : DockPanel
             Margin = new Thickness(Spacing.M, Spacing.M, Spacing.M, Spacing.XS),
             Children =
             {
-                new TextBlock { Text = title, FontSize = Typography.CaptionSize, FontWeight = FontWeight.Bold, Foreground = Palette.TextSecondary },
-                count,
+                new TextBlock { Classes = { "section-title" }, Text = title, VerticalAlignment = VerticalAlignment.Center },
+                new Border
+                {
+                    MinWidth = BadgeHeight,
+                    Height = BadgeHeight,
+                    Padding = new Thickness(5, 0),
+                    CornerRadius = new CornerRadius(BadgeHeight / 2),
+                    Background = Palette.Pressed,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Child = count,
+                },
             },
         };
     }
@@ -135,8 +151,8 @@ public sealed class ExtensionsView : DockPanel
             _ = LoadIconAsync(icon, address);
         }
 
-        var name = new TextBlock { Text = item.DisplayName, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
-        var version = new TextBlock { Text = item.Version, Foreground = Palette.TextMuted, FontSize = Typography.CaptionSize, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+        var name = new TextBlock { Text = item.DisplayName, FontWeight = Typography.Strong, TextTrimming = TextTrimming.CharacterEllipsis };
+        var version = new TextBlock { Text = item.Version, Foreground = Palette.TextSecondary, FontSize = Typography.CaptionSize, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
         var description = new TextBlock
         {
             Text = item.Description,
@@ -147,7 +163,7 @@ public sealed class ExtensionsView : DockPanel
             TextWrapping = TextWrapping.Wrap,
             IsVisible = item.Description.Length > 0,
         };
-        var details = new TextBlock { Text = item.Details, Foreground = Palette.TextMuted, FontSize = Typography.CaptionSize, TextTrimming = TextTrimming.CharacterEllipsis };
+        var details = new TextBlock { Text = item.Details, Foreground = Palette.TextSecondary, FontSize = Typography.CaptionSize, TextTrimming = TextTrimming.CharacterEllipsis };
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Spacing.XS, Margin = new Thickness(0, Spacing.XS, 0, 0) };
         if (item.IsInstalled)
@@ -168,9 +184,12 @@ public sealed class ExtensionsView : DockPanel
                 .Bind(TextBlock.TextProperty, item, x => x.Status));
         }
 
+        // A rounded row inset from the edges, like the list rows elsewhere.
         var row = new Border
         {
-            Padding = new Thickness(Spacing.M, Spacing.S),
+            Margin = new Thickness(Spacing.XS, 0),
+            Padding = new Thickness(Spacing.S),
+            CornerRadius = Spacing.RadiusMedium,
             Background = Brushes.Transparent,
             Child = new DockPanel
             {
@@ -206,13 +225,10 @@ public sealed class ExtensionsView : DockPanel
             Content = text,
             Command = command,
             Padding = new Thickness(10, 2),
-            MinHeight = 22,
+            MinHeight = 24,
             FontSize = Typography.SmallSize,
         };
-        if (primary)
-        {
-            button.Classes.Add("primary");
-        }
+        button.Classes.Add(primary ? "primary" : "secondary");
 
         AutomationProperties.SetName(button, name);
         return button;

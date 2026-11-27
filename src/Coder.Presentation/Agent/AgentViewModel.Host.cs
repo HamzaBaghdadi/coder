@@ -105,34 +105,7 @@ public sealed partial class AgentViewModel
     private async Task ApplyAsync(EditProposalItem item)
     {
         var proposal = item.Proposal;
-        var path = proposal.Path;
-        if (_workspace.Editors.FindTab(path) is { } tab)
-        {
-            var current = tab.Document.GetText();
-            var (start, end, text) = MinimalEdit(current, proposal.Proposed);
-            tab.Editor.ApplyEdits([(start, end, text)]);
-            if (!await _workspace.Editors.SaveAsync(tab))
-            {
-                throw new IOException($"{Path.GetFileName(path)} was changed in its editor but could not be saved.");
-            }
-        }
-        else if (_workspace.FileSystem.Exists(path))
-        {
-            var content = await _workspace.FileSystem.ReadTextAsync(path);
-            var ending = LineEndings.Detect(content.Text);
-            await _workspace.FileSystem.WriteTextAsync(path, LineEndings.Apply(proposal.Proposed, ending), content.Encoding);
-            _workspace.FilesChanged([(path, FileChangeType.Changed)]);
-        }
-        else
-        {
-            if (Path.GetDirectoryName(path) is { } folder)
-            {
-                _workspace.FileSystem.CreateDirectory(folder);
-            }
-
-            await _workspace.FileSystem.WriteTextAsync(path, LineEndings.Apply(proposal.Proposed, LineEndings.Platform), new UTF8Encoding(false));
-            _workspace.FilesChanged([(path, FileChangeType.Created)]);
-        }
+        await new DocumentEditApplier(_workspace.Editors, _workspace.FileSystem, changes => _workspace.FilesChanged(changes)).ApplyAsync(proposal.Path, proposal.Proposed);
 
         if (_currentTool is { Proposal: var shown } tool && ReferenceEquals(shown, item))
         {
@@ -141,23 +114,7 @@ public sealed partial class AgentViewModel
     }
 
     /// <summary>The one replacement that turns <paramref name="before"/> into <paramref name="after"/>: everything between their common start and end.</summary>
-    internal static (int Start, int End, string Text) MinimalEdit(string before, string after)
-    {
-        var prefix = 0;
-        var max = Math.Min(before.Length, after.Length);
-        while (prefix < max && before[prefix] == after[prefix])
-        {
-            prefix++;
-        }
-
-        var suffix = 0;
-        while (suffix < max - prefix && before[before.Length - 1 - suffix] == after[after.Length - 1 - suffix])
-        {
-            suffix++;
-        }
-
-        return (prefix, before.Length - suffix, after[prefix..(after.Length - suffix)]);
-    }
+    internal static (int Start, int End, string Text) MinimalEdit(string before, string after) => DocumentEditApplier.MinimalEdit(before, after);
 
     /// <summary>The proposal side by side in a diff tab: the file now on the left, the agent's version on the right.</summary>
     private void OpenDiff(EditProposalItem item) =>

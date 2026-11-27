@@ -12,8 +12,9 @@ namespace Coder.App.Editor;
 /// Text drawn inside a line that is not part of the document (an inlay hint), placed before the
 /// character at display index <see cref="At"/>. <see cref="CaretAfter"/>: a caret at that index sits
 /// after the hint (a parameter name before its argument) rather than before it (a type after a name).
+/// <see cref="IsSuggestion"/>: an AI inline suggestion (gray, no background) rather than an inlay hint.
 /// </summary>
-internal readonly record struct LineInsertion(int At, string Label, bool PadLeft, bool PadRight, bool CaretAfter)
+internal readonly record struct LineInsertion(int At, string Label, bool PadLeft, bool PadRight, bool CaretAfter, bool IsSuggestion = false)
 {
     /// <summary>The label with its padding: the space the hint takes in the line.</summary>
     public string Text => (PadLeft ? " " : string.Empty) + Label + (PadRight ? " " : string.Empty);
@@ -115,6 +116,9 @@ internal sealed class LineLayoutCache
 
     public void Clear() => _lines.Clear();
 
+    /// <summary>Drops one line (its inline suggestion came or went).</summary>
+    public void Invalidate(int line) => _lines.Remove(line);
+
     /// <summary>Drops every cached line at or after <paramref name="firstLine"/>.</summary>
     public void InvalidateFrom(int firstLine)
     {
@@ -125,14 +129,15 @@ internal sealed class LineLayoutCache
     }
 
     /// <summary>Forgets lines far away from the viewport.</summary>
-    public void Trim(int firstVisible, int lastVisible)
+    /// <param name="keep">Lines drawn elsewhere (the sticky scroll's pinned headers), kept too.</param>
+    public void Trim(int firstVisible, int lastVisible, IReadOnlySet<int>? keep = null)
     {
         if (_lines.Count < (lastVisible - firstVisible) + KeepAroundViewport * 2)
         {
             return;
         }
 
-        foreach (var line in _lines.Keys.Where(line => line < firstVisible - KeepAroundViewport || line > lastVisible + KeepAroundViewport).ToList())
+        foreach (var line in _lines.Keys.Where(line => (line < firstVisible - KeepAroundViewport || line > lastVisible + KeepAroundViewport) && keep?.Contains(line) != true).ToList())
         {
             _lines.Remove(line);
         }
@@ -194,6 +199,7 @@ internal sealed class LineLayoutCache
         var combined = new System.Text.StringBuilder(text.Length + insertions.Sum(i => i.Text.Length));
         var result = new List<ValueSpan<TextRunProperties>>(runs.Count + insertions.Count * 3);
         var hintText = new GenericTextRunProperties(metrics.Typeface, metrics.FontSize, foregroundBrush: Palette.InlayHint, backgroundBrush: Palette.InlayHintBackground);
+        var suggestionText = metrics.RunProperties(Palette.InlineSuggestion);
         var plain = metrics.RunProperties(Palette.TextPrimary);
         var from = 0;
         foreach (var insertion in insertions)
@@ -208,7 +214,7 @@ internal sealed class LineLayoutCache
                 result.Add(new ValueSpan<TextRunProperties>(start, 1, plain));
             }
 
-            result.Add(new ValueSpan<TextRunProperties>(labelStart, insertion.Label.Length, hintText));
+            result.Add(new ValueSpan<TextRunProperties>(labelStart, insertion.Label.Length, insertion.IsSuggestion ? suggestionText : hintText));
             if (insertion.PadRight)
             {
                 result.Add(new ValueSpan<TextRunProperties>(labelStart + insertion.Label.Length, 1, plain));

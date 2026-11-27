@@ -25,7 +25,7 @@ namespace Coder.App.Workbench;
 public sealed class AccountButton : Panel
 {
     private const double PanelWidth = 300;
-    private const double ButtonAvatarSize = 20;
+    private const double ButtonAvatarSize = Spacing.TitleBarAvatar;
 
     private readonly WorkbenchViewModel _workbench;
     private readonly SettingsSyncViewModel _sync;
@@ -39,7 +39,7 @@ public sealed class AccountButton : Panel
         _workbench = workbench;
         _sync = sync;
         VerticalAlignment = VerticalAlignment.Center;
-        _button = new FlatButton(Icons.Account, "Accounts") { Command = new RelayCommand(Toggle) };
+        _button = new FlatButton(Icons.Account, "Accounts", Spacing.TitleBarGlyph) { Command = new RelayCommand(Toggle), Width = Spacing.TitleBarButton, Height = Spacing.TitleBarButton };
         WindowDecorationProperties.SetElementRole(_button, WindowDecorationsElementRole.User);
 
         _panel = new ChamferBorder
@@ -48,7 +48,7 @@ public sealed class AccountButton : Panel
             Background = Palette.Elevated,
             BorderBrush = Palette.BorderStrong,
             BorderThickness = 1,
-            Chamfer = Spacing.ChamferSmall,
+            Radius = Spacing.RadiusLarge.TopLeft,
             Padding = new Thickness(Spacing.XS),
         };
         _popup = new Popup
@@ -97,7 +97,7 @@ public sealed class AccountButton : Panel
         AutomationProperties.SetName(_button, "Accounts");
         AutomationProperties.SetHelpText(_button, name);
         ToolTip.SetTip(_button, name);
-        _button.Content = _sync.IsSignedIn ? Avatar(ButtonAvatarSize) : new Icon(Icons.Account, 16);
+        _button.Content = _sync.IsSignedIn ? Avatar(ButtonAvatarSize) : new Icon(Icons.Account, Spacing.TitleBarGlyph);
     }
 
     /// <summary>The panel as it would show now. Internal for tests.</summary>
@@ -115,7 +115,7 @@ public sealed class AccountButton : Panel
                     Text = code,
                     FontFamily = Typography.Code,
                     FontSize = 22,
-                    FontWeight = FontWeight.SemiBold,
+                    FontWeight = Typography.Strong,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     Margin = new Thickness(0, Spacing.S),
                 };
@@ -154,12 +154,12 @@ public sealed class AccountButton : Panel
             {
                 Width = 8,
                 Height = 8,
-                CornerRadius = new CornerRadius(4),
+                CornerRadius = Spacing.RadiusSmall,
                 Background = on ? Palette.Accent : Palette.TextMuted,
                 Margin = new Thickness(0, 0, Spacing.S, 0),
                 VerticalAlignment = VerticalAlignment.Center,
             }.Dock(Dock.Left));
-            status.Children.Add(new TextBlock { Text = _sync.IsSyncing ? "Syncing…" : on ? "Settings Sync is on" : "Settings Sync is off", FontWeight = FontWeight.SemiBold });
+            status.Children.Add(new TextBlock { Text = _sync.IsSyncing ? "Syncing…" : on ? "Settings Sync is on" : "Settings Sync is off", FontWeight = Typography.Strong });
             content.Children.Add(status);
             content.Children.Add(Text(_sync.StatusText, Palette.TextMuted, Typography.CaptionSize));
             content.Children.Add(Separator());
@@ -201,7 +201,7 @@ public sealed class AccountButton : Panel
             {
                 Text = _sync.Initial,
                 Foreground = Palette.TextOnAccent,
-                FontWeight = FontWeight.SemiBold,
+                FontWeight = Typography.Strong,
                 FontSize = size * 0.5,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -246,7 +246,7 @@ public sealed class AccountButton : Panel
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                new TextBlock { Text = title, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis },
+                new TextBlock { Text = title, FontWeight = Typography.Strong, TextTrimming = TextTrimming.CharacterEllipsis },
                 new TextBlock { Text = subtitle, Foreground = Palette.TextSecondary, FontSize = Typography.SmallSize, TextTrimming = TextTrimming.CharacterEllipsis },
             },
         });

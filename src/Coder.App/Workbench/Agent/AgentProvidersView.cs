@@ -41,7 +41,7 @@ public sealed class AgentProvidersView : DockPanel
             {
                 Padding = new Thickness(Spacing.S, 3),
                 Margin = new Thickness(0, 0, Spacing.XS, Spacing.XS),
-                BorderBrush = Palette.BorderStrong,
+                Classes = { "secondary" },
                 Command = agent.AddProviderCommand,
                 CommandParameter = kind,
                 Content = new StackPanel
@@ -72,7 +72,7 @@ public sealed class AgentProvidersView : DockPanel
                 Children =
                 {
                     back,
-                    new TextBlock { Text = "Providers", FontSize = 15, FontWeight = FontWeight.SemiBold },
+                    new TextBlock { Text = "Providers", Classes = { "title" } },
                     new TextBlock
                     {
                         Text = "Coder Agent talks to the AI services you choose, with your own keys. Keys are encrypted for your Windows account and kept out of settings.json.",
@@ -81,7 +81,7 @@ public sealed class AgentProvidersView : DockPanel
                         Foreground = Palette.TextSecondary,
                     },
                     list,
-                    new TextBlock { Text = "Add a provider", FontSize = Typography.SmallSize, FontWeight = FontWeight.SemiBold, Foreground = Palette.TextSecondary },
+                    new TextBlock { Text = "Add a provider", Classes = { "section-title" } },
                     adders,
                 },
             },
@@ -109,7 +109,7 @@ public sealed class AgentProvidersView : DockPanel
                 e.Handled = true;
             }
         };
-        var saveKey = new FlatButton { Content = "Save", Padding = new Thickness(Spacing.S, 3), Margin = new Thickness(Spacing.XS, 0, 0, 0), BorderBrush = Palette.BorderStrong, Command = provider.SaveKeyCommand };
+        var saveKey = new FlatButton { Classes = { "secondary" }, Content = "Save", Padding = new Thickness(Spacing.S, 3), Margin = new Thickness(Spacing.XS, 0, 0, 0), Command = provider.SaveKeyCommand };
         AutomationProperties.SetName(saveKey, $"Save {provider.Config.Name} key");
         var clearKey = new FlatButton(Icons.Trash, "Forget the Saved Key", 14) { Margin = new Thickness(2, 0, 0, 0), Command = provider.ClearKeyCommand }
             .Bind(IsVisibleProperty, provider, x => x.HasKey);
@@ -118,22 +118,18 @@ public sealed class AgentProvidersView : DockPanel
             .Bind(TextBlock.TextProperty, provider, x => x.StatusText)
             .Bind(TextBlock.ForegroundProperty, provider, x => x.HasError, error => error ? Palette.DiagnosticError : Palette.TextSecondary);
 
-        var test = new FlatButton { Content = "Test Connection", Padding = new Thickness(Spacing.S, 3), BorderBrush = Palette.BorderStrong, Command = provider.TestCommand };
+        var test = new FlatButton { Classes = { "secondary" }, Content = "Test Connection", Padding = new Thickness(Spacing.S, 3), Command = provider.TestCommand };
         AutomationProperties.SetName(test, $"Test {provider.Config.Name}");
         var remove = new FlatButton { Content = "Remove", Padding = new Thickness(Spacing.S, 3), Command = provider.RemoveCommand };
         AutomationProperties.SetName(remove, $"Remove {provider.Config.Name}");
 
-        return new ChamferBorder
+        return new Border
         {
-            Classes = { "provider-card" },
-            Background = Palette.Elevated,
-            BorderBrush = Palette.Border,
-            BorderThickness = 1,
-            Chamfer = Spacing.ChamferSmall,
+            Classes = { "card", "provider-card" },
             Padding = new Thickness(Spacing.M),
             Child = new StackPanel
             {
-                Spacing = 6,
+                Spacing = Spacing.S,
                 Children =
                 {
                     new DockPanel
@@ -157,5 +153,5 @@ public sealed class AgentProvidersView : DockPanel
     }
 
     private static TextBlock Label(string text) =>
-        new() { Text = text, FontSize = Typography.CaptionSize, FontWeight = FontWeight.SemiBold, Foreground = Palette.TextSecondary, Margin = new Thickness(0, 2, 0, 0) };
+        new() { Text = text, FontSize = Typography.SmallSize, Foreground = Palette.TextSecondary, Margin = new Thickness(0, Spacing.XXS, 0, 0) };
 }

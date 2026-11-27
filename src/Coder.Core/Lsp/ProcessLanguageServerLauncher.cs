@@ -1,6 +1,3 @@
-using System.ComponentModel;
-using System.Diagnostics;
-
 namespace Coder.Core.Lsp;
 
 /// <summary>Starts language servers. Abstracted so tests (and future remote servers) can supply their own.</summary>
@@ -41,22 +38,7 @@ public sealed class ProcessLanguageServerLauncher(ManagedServers? managed = null
         var (executable, prefix) = Managed(server) is var (node, script)
             ? (node, (string[])[script])
             : (ExecutableLocator.Find(server.Command) ?? throw new FileNotFoundException($"{server.Command} was not found on PATH."), []);
-        var start = new ProcessStartInfo(executable)
-        {
-            WorkingDirectory = rootPath,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        foreach (var argument in prefix.Concat(server.Arguments))
-        {
-            start.ArgumentList.Add(argument);
-        }
-
-        var process = Process.Start(start) ?? throw new Win32Exception($"Could not start {server.Command}.");
-        return new LanguageClient(new ProcessTransport(process), rootPath, server.Name)
+        return new LanguageClient(ProcessTransport.Start(executable, prefix.Concat(server.Arguments), rootPath), rootPath, server.Name)
         {
             Settings = server.Settings,
             InitializationOptions = server.InitializationOptions,
@@ -66,71 +48,6 @@ public sealed class ProcessLanguageServerLauncher(ManagedServers? managed = null
     /// <summary>Node.js and the script of Coder's copy of the server, when both are here.</summary>
     private (string Node, string Script)? Managed(LanguageServerDefinition server) =>
         server.Tool is { } tool && managed?.Find(tool) is { } script && managed.Node() is { } node ? (node, script) : null;
-
-    /// <summary>The server process's pipes. Disposing it ends the process if it has not exited.</summary>
-    private sealed class ProcessTransport : ILanguageServerTransport
-    {
-        private const int KeptErrorLines = 20;
-
-        private readonly Process _process;
-        private readonly Queue<string> _errorLines = new();
-
-        public ProcessTransport(Process process)
-        {
-            _process = process;
-
-            // stderr must be drained or a chatty server blocks on a full pipe.
-            process.ErrorDataReceived += (_, e) =>
-            {
-                if (e.Data is null)
-                {
-                    return;
-                }
-
-                lock (_errorLines)
-                {
-                    _errorLines.Enqueue(e.Data);
-                    if (_errorLines.Count > KeptErrorLines)
-                    {
-                        _errorLines.Dequeue();
-                    }
-                }
-            };
-            process.BeginErrorReadLine();
-        }
-
-        public Stream Input => _process.StandardOutput.BaseStream;
-
-        public Stream Output => _process.StandardInput.BaseStream;
-
-        public string RecentErrorOutput
-        {
-            get
-            {
-                lock (_errorLines)
-                {
-                    return string.Join(Environment.NewLine, _errorLines);
-                }
-            }
-        }
-
-        public void Dispose()
-        {
-            try
-            {
-                if (!_process.WaitForExit(500))
-                {
-                    _process.Kill(entireProcessTree: true);
-                }
-            }
-            catch (Exception exception) when (exception is InvalidOperationException or Win32Exception)
-            {
-                // Already gone.
-            }
-
-            _process.Dispose();
-        }
-    }
 }
 
 /// <summary>Finds a command the way a shell would: on PATH (with Windows executable extensions) and in common tool folders.</summary>

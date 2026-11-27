@@ -31,9 +31,9 @@ public sealed class HistoryView : DockPanel
             .Bind(Icon.DataProperty, history, x => x.IsExpanded, open => open ? Icons.ChevronDown : Icons.ChevronRight);
         var header = new FlatButton
         {
-            Height = 26,
+            Height = 28,
             Padding = new Thickness(Spacing.S, 0),
-            Chamfer = 0,
+            Radius = 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Left,
             Command = new RelayCommand(() => history.IsExpanded = !history.IsExpanded),
@@ -45,11 +45,8 @@ public sealed class HistoryView : DockPanel
                     chevron,
                     new TextBlock
                     {
-                        Text = "GRAPH",
-                        FontSize = Typography.CaptionSize,
-                        FontWeight = FontWeight.SemiBold,
-                        LetterSpacing = 0.4,
-                        Foreground = Palette.TextSecondary,
+                        Classes = { "section-title" },
+                        Text = "Graph",
                         VerticalAlignment = VerticalAlignment.Center,
                     },
                 },
@@ -135,7 +132,7 @@ public sealed class HistoryView : DockPanel
         var subject = new TextBlock
         {
             Text = commit.Subject,
-            FontWeight = row.IsHead ? FontWeight.SemiBold : FontWeight.Normal,
+            FontWeight = row.IsHead ? Typography.Strong : FontWeight.Normal,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
@@ -144,7 +141,7 @@ public sealed class HistoryView : DockPanel
             Text = commit.Author,
             Margin = new Thickness(6, 0, 0, 0),
             FontSize = Typography.SmallSize,
-            Foreground = Palette.TextMuted,
+            Foreground = Palette.TextSecondary,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
@@ -182,7 +179,7 @@ public sealed class HistoryView : DockPanel
                 {
                     Text = change.Letter,
                     Foreground = color,
-                    FontWeight = FontWeight.SemiBold,
+                    FontWeight = Typography.Strong,
                     Width = 16,
                     TextAlignment = TextAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
@@ -194,7 +191,7 @@ public sealed class HistoryView : DockPanel
                     Text = Path.GetDirectoryName(change.RelativePath)?.Replace('\\', '/') ?? string.Empty,
                     Margin = new Thickness(6, 0, 0, 0),
                     FontSize = Typography.SmallSize,
-                    Foreground = Palette.TextMuted,
+                    Foreground = Palette.TextSecondary,
                     VerticalAlignment = VerticalAlignment.Center,
                     TextTrimming = TextTrimming.LeadingCharacterEllipsis,
                 },
@@ -218,8 +215,8 @@ public sealed class HistoryView : DockPanel
         return new Border
         {
             Height = 16,
-            Padding = new Thickness(5, 0),
-            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(6, 0),
+            CornerRadius = new CornerRadius(8), // a pill: half the height
             VerticalAlignment = VerticalAlignment.Center,
             Background = isHead ? lane : Brushes.Transparent,
             BorderBrush = isRemote || isTag ? Palette.BorderStrong : lane,
@@ -229,7 +226,7 @@ public sealed class HistoryView : DockPanel
                 Text = isTag ? $"◆ {text}" : text,
                 FontSize = Typography.CaptionSize,
                 Foreground = isHead ? Palette.EditorBackground : isRemote || isTag ? Palette.TextSecondary : Palette.TextPrimary,
-                FontWeight = isHead ? FontWeight.SemiBold : FontWeight.Normal,
+                FontWeight = isHead ? Typography.Strong : FontWeight.Normal,
                 VerticalAlignment = VerticalAlignment.Center,
             },
         };

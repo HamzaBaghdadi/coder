@@ -68,6 +68,11 @@ public static class CompositionRoot
 
         // Settings Sync: the GitHub token is encrypted with DPAPI next to settings.json, never inside it.
         var syncFolder = Path.Combine(dataFolder, "sync");
+        if (OperatingSystem.IsWindows())
+        {
+            workbench.EnableShellIntegration(ShellIntegration.ForThisApp()); // "Shell Command: Install 'coder' Command in PATH"
+        }
+
         var sync = workbench.EnableSettingsSync(
             new SettingsSyncService(Http, GitHubClientId, syncFolder, new DpapiTokenStore(Path.Combine(syncFolder, "github-token.bin"))),
             uri => _ = window.Launcher.LaunchUriAsync(uri),
@@ -79,6 +84,10 @@ public static class CompositionRoot
                 }
             });
         window.Opened += (_, _) => _ = sync.StartAsync(); // pull quietly once the window is up
+
+        // Extension programs (Claude Code...): their commands now, the programs once the window can ask consent.
+        var extensionHost = workbench.EnableExtensionHost();
+        window.Opened += (_, _) => _ = extensionHost.StartAsync();
 
         if (args.Count > 0)
         {

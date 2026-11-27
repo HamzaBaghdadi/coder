@@ -32,10 +32,23 @@ public sealed class DiffTabViewModel : TabViewModel
         ModifiedLabel = modifiedLabel;
         OriginalLines = LineDiff.SplitLines(original);
         ModifiedLines = LineDiff.SplitLines(modified);
+        ModifiedText = modified;
         Language = Languages.FromFileName(path);
         Hunks = LineDiff.Compute(OriginalLines, ModifiedLines);
         Rows = Align(OriginalLines.Count, ModifiedLines.Count, Hunks);
     }
+
+    /// <summary>When set, the right side is a proposal the user accepts or rejects from the diff's toolbar.</summary>
+    public DiffReview? Review { get; init; }
+
+    /// <summary>A name the opener knows this diff by (an extension closes it by that name), or null.</summary>
+    public string? ReviewName { get; init; }
+
+    /// <summary>The proposed text (the right side), as given.</summary>
+    public string ModifiedText { get; }
+
+    /// <summary>A pending proposal ends as rejected when its tab closes.</summary>
+    public override void Close() => Review?.Reject();
 
     public override string Title => $"{Path.GetFileName(_filePath)} ({ModifiedLabel})";
 

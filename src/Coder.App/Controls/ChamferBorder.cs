@@ -48,11 +48,15 @@ public sealed class ChamferBorder : Decorator
     public static readonly StyledProperty<IBrush?> TopEdgeBrushProperty =
         AvaloniaProperty.Register<ChamferBorder, IBrush?>(nameof(TopEdgeBrush));
 
+    /// <summary>Corner radius used when <see cref="Chamfer"/> is 0: the rounded shape of ordinary controls.</summary>
+    public static readonly StyledProperty<double> RadiusProperty =
+        AvaloniaProperty.Register<ChamferBorder, double>(nameof(Radius));
+
     private const double TopEdgeThickness = 2;
 
     static ChamferBorder()
     {
-        AffectsRender<ChamferBorder>(BackgroundProperty, BorderBrushProperty, BorderThicknessProperty, ChamferProperty, CornersProperty, TopEdgeBrushProperty);
+        AffectsRender<ChamferBorder>(BackgroundProperty, BorderBrushProperty, BorderThicknessProperty, ChamferProperty, CornersProperty, TopEdgeBrushProperty, RadiusProperty);
     }
 
     public IBrush? Background
@@ -79,6 +83,12 @@ public sealed class ChamferBorder : Decorator
         set => SetValue(ChamferProperty, value);
     }
 
+    public double Radius
+    {
+        get => GetValue(RadiusProperty);
+        set => SetValue(RadiusProperty, value);
+    }
+
     public ChamferCorners Corners
     {
         get => GetValue(CornersProperty);
@@ -98,7 +108,10 @@ public sealed class ChamferBorder : Decorator
         {
             // Inset by half the stroke so the outline stays inside the control's bounds.
             var inset = hasOutline ? BorderThickness / 2 : 0;
-            var shape = CreateShape(new Rect(Bounds.Size).Deflate(inset), Chamfer, Corners);
+            var rect = new Rect(Bounds.Size).Deflate(inset);
+            Geometry shape = Chamfer <= 0 && Radius > 0
+                ? new RectangleGeometry(rect, Math.Max(0, Radius - inset), Math.Max(0, Radius - inset))
+                : CreateShape(rect, Chamfer, Corners);
             context.DrawGeometry(Background, hasOutline ? new Pen(BorderBrush, BorderThickness) : null, shape);
         }
 

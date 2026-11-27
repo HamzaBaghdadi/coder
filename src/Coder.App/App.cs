@@ -22,21 +22,21 @@ public sealed class App(ISettingsStore settings) : Application
             {
                 [ThemeVariant.Dark] = new ColorPaletteResources
                 {
-                    Accent = Color.Parse("#3D8BFF"),
-                    RegionColor = Color.Parse("#0C0F17"),
-                    AltHigh = Color.Parse("#0C0F17"),
-                    BaseHigh = Color.Parse("#D5DBE5"),
-                    ChromeMedium = Color.Parse("#121826"),
-                    ChromeMediumLow = Color.Parse("#0F1420"),
+                    Accent = Color.Parse("#4C8DFF"),
+                    RegionColor = Color.Parse("#111215"),
+                    AltHigh = Color.Parse("#111215"),
+                    BaseHigh = Color.Parse("#E3E5EA"),
+                    ChromeMedium = Color.Parse("#181A1F"),
+                    ChromeMediumLow = Color.Parse("#0B0C0E"),
                 },
                 [ThemeVariant.Light] = new ColorPaletteResources
                 {
-                    Accent = Color.Parse("#1A62D6"),
-                    RegionColor = Color.Parse("#FBFCFE"),
-                    AltHigh = Color.Parse("#FBFCFE"),
-                    BaseHigh = Color.Parse("#1A2332"),
+                    Accent = Color.Parse("#1F62D6"),
+                    RegionColor = Color.Parse("#FFFFFF"),
+                    AltHigh = Color.Parse("#FFFFFF"),
+                    BaseHigh = Color.Parse("#1B1D22"),
                     ChromeMedium = Color.Parse("#FFFFFF"),
-                    ChromeMediumLow = Color.Parse("#F1F4F8"),
+                    ChromeMediumLow = Color.Parse("#F3F4F6"),
                 },
             },
         });

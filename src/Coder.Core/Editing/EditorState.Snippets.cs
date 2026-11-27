@@ -14,6 +14,25 @@ public sealed partial class EditorState
     public bool IsInSnippet => _snippet is not null;
 
     /// <summary>
+    /// True while the caret is filling in the current snippet placeholder (where Tab means "next stop"),
+    /// rather than somewhere else in or after the snippet.
+    /// </summary>
+    public bool IsCaretOnSnippetStop
+    {
+        get
+        {
+            if (_snippet is not { } session)
+            {
+                return false;
+            }
+
+            var number = session.Order[session.Index];
+            var caret = Selection.Active;
+            return session.Stops.Any(s => s.Number == number && caret >= s.Start && caret <= s.End);
+        }
+    }
+
+    /// <summary>
     /// Starts navigating the tab stops of an inserted snippet (absolute offsets). Nothing starts when
     /// there is no stop to move to.
     /// </summary>

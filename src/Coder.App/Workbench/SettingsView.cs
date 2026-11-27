@@ -20,7 +20,7 @@ public sealed class SettingsView : DockPanel
     private const double PageWidth = 760;
 
     private readonly TextBox _search;
-    private readonly StackPanel _list = new() { Spacing = 2 };
+    private readonly StackPanel _list = new() { Spacing = Spacing.XS };
     private SettingsPageViewModel? _page;
 
     public SettingsView()
@@ -30,7 +30,7 @@ public sealed class SettingsView : DockPanel
         AutomationProperties.SetName(_search, "Search settings");
         _search.TextChanged += (_, _) => _page?.Query = _search.Text ?? string.Empty;
 
-        var json = new FlatButton { Content = "Edit in settings.json", Padding = new Thickness(10, 4), VerticalAlignment = VerticalAlignment.Center };
+        var json = new FlatButton { Content = "Edit in settings.json", Classes = { "secondary" }, VerticalAlignment = VerticalAlignment.Center };
         json.Click += async (_, _) =>
         {
             if (_page?.OpenJson is { } open)
@@ -41,11 +41,11 @@ public sealed class SettingsView : DockPanel
 
         var header = new DockPanel
         {
-            Margin = new Thickness(0, Spacing.XL, 0, Spacing.M),
+            Margin = new Thickness(0, Spacing.XXL, 0, Spacing.L),
             Children =
             {
                 json.Dock(Dock.Right),
-                new TextBlock { Text = "Settings", FontSize = 22, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center },
+                new TextBlock { Text = "Settings", Classes = { "heading" }, VerticalAlignment = VerticalAlignment.Center },
             },
         };
 
@@ -56,7 +56,7 @@ public sealed class SettingsView : DockPanel
             {
                 MaxWidth = PageWidth,
                 Margin = new Thickness(Spacing.XL, 0, Spacing.XL, Spacing.XL),
-                Children = { header, _search, new Border { Height = Spacing.M }, _list },
+                Children = { header, _search, new Border { Height = Spacing.L }, _list },
             },
         });
     }
@@ -108,9 +108,8 @@ public sealed class SettingsView : DockPanel
                 _list.Children.Add(new TextBlock
                 {
                     Text = category,
-                    FontSize = 15,
-                    FontWeight = FontWeight.SemiBold,
-                    Margin = new Thickness(0, _list.Children.Count == 0 ? 0 : Spacing.L, 0, Spacing.XS),
+                    Classes = { "title" },
+                    Margin = new Thickness(Spacing.M, _list.Children.Count == 0 ? Spacing.XS : Spacing.XL, 0, Spacing.XS),
                 });
             }
 
@@ -119,7 +118,7 @@ public sealed class SettingsView : DockPanel
 
         if (_page.Visible.Count == 0)
         {
-            _list.Children.Add(new TextBlock { Text = "No settings match. Try another word.", Foreground = Palette.TextSecondary, Margin = new Thickness(0, Spacing.M) });
+            _list.Children.Add(new TextBlock { Text = "No settings match. Try another word.", Classes = { "secondary" }, Margin = new Thickness(Spacing.M) });
         }
     }
 
@@ -128,12 +127,12 @@ public sealed class SettingsView : DockPanel
     {
         var text = new StackPanel
         {
-            Spacing = 2,
+            Spacing = Spacing.XXS,
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                new TextBlock { Text = item.Title, FontWeight = FontWeight.SemiBold },
-                new TextBlock { Text = item.Description, Foreground = Palette.TextSecondary, TextWrapping = TextWrapping.Wrap, FontSize = Typography.SmallSize, LineHeight = 18 },
+                new TextBlock { Text = item.Title, FontWeight = Typography.Strong, Foreground = Palette.TextPrimary, TextWrapping = TextWrapping.Wrap },
+                new TextBlock { Text = item.Description, Classes = { "secondary" }, TextWrapping = TextWrapping.Wrap, FontSize = Typography.SmallSize, LineHeight = 18 },
             },
         };
         if (item.Note is { } note)
@@ -154,7 +153,7 @@ public sealed class SettingsView : DockPanel
 
         var row = new Border
         {
-            Padding = new Thickness(Spacing.M, Spacing.S),
+            Padding = new Thickness(Spacing.M, Spacing.M),
             CornerRadius = Spacing.RadiusMedium,
             Background = Brushes.Transparent,
             Child = new DockPanel { Children = { control.Dock(Dock.Right), text } },
@@ -168,8 +167,8 @@ public sealed class SettingsView : DockPanel
     {
         ToggleSetting toggle => new ToggleSwitch { OnContent = null, OffContent = null, MinWidth = 0 }
             .Bind(ToggleSwitch.IsCheckedProperty, toggle, x => x.Value, Avalonia.Data.BindingMode.TwoWay),
-        NumberSetting number => new NumericUpDown { Minimum = (decimal)number.Minimum, Maximum = (decimal)number.Maximum, Increment = 1, FormatString = "0", Width = 130 }
-            .Bind(NumericUpDown.ValueProperty, number, x => x.Value, Avalonia.Data.BindingMode.TwoWay),
+        NumberSetting number => new NumberBox { Minimum = number.Minimum, Maximum = number.Maximum, Width = 130 }
+            .Bind(NumberBox.ValueProperty, number, x => x.Value, Avalonia.Data.BindingMode.TwoWay),
         ChoiceSetting choice => new ComboBox { ItemsSource = choice.Options, MinWidth = 200 }
             .Bind(ComboBox.SelectedItemProperty, choice, x => x.Selected, Avalonia.Data.BindingMode.TwoWay),
         ActionSetting action => ActionButton(action),
@@ -178,7 +177,7 @@ public sealed class SettingsView : DockPanel
 
     private static FlatButton ActionButton(ActionSetting action)
     {
-        var button = new FlatButton { Padding = new Thickness(10, 4), MinWidth = 130, HorizontalContentAlignment = HorizontalAlignment.Center }
+        var button = new FlatButton { Classes = { "secondary" }, MinWidth = 130, HorizontalContentAlignment = HorizontalAlignment.Center }
             .Bind(ContentControl.ContentProperty, action, x => x.ActionLabel);
         button.Click += async (_, _) => await action.RunAsync();
         return button;

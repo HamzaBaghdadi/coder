@@ -51,6 +51,9 @@ public sealed record ChatRequest(string Model, IReadOnlyList<ChatMessage> Messag
     public IReadOnlyList<ToolDefinition> Tools { get; init; } = [];
 
     public double? Temperature { get; init; }
+
+    /// <summary>The longest reply wanted, in tokens (null: the provider's default).</summary>
+    public int? MaxTokens { get; init; }
 }
 
 /// <summary>Something that arrived while a reply streams in.</summary>

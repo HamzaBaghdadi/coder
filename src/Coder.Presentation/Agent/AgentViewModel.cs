@@ -400,7 +400,10 @@ public sealed partial class AgentViewModel : ObservableObject
     // Models ---------------------------------------------------------------------------------------
 
     /// <summary>Lists every provider's models in the palette (after fetching them), plus a way to type any model id.</summary>
-    public async Task ShowModelPickerAsync()
+    public Task ShowModelPickerAsync() => ShowModelPickerAsync("Pick a model for Coder Agent (or type a model id)", _providerId, Model, SelectModel);
+
+    /// <summary>The model picker for another use (inline suggestions): its title, the current choice, what picking does and rows to add first.</summary>
+    public async Task ShowModelPickerAsync(string title, string currentProvider, string currentModel, Action<string, string> select, IReadOnlyList<PaletteItem>? extraRows = null)
     {
         Notice = "Loading models…";
         await Task.WhenAll(Providers.Where(p => p.IsReady).Select(p => p.GetModelsAsync()));
@@ -430,18 +433,19 @@ public sealed partial class AgentViewModel : ObservableObject
                     model.SupportsVision == true ? "vision" : null,
                     model.ContextLength is { } context ? $"{context / 1000:N0}K context" : null,
                 }.Where(t => t is not null));
-                var current = provider.Id == _providerId && model.Id == Model;
+                var current = provider.Id == currentProvider && model.Id == currentModel;
                 rows.Add(new PaletteItem(model.DisplayName, model.Id == model.DisplayName ? traits : $"{model.Id} · {traits}", current ? "current" : null, () =>
                 {
-                    SelectModel(provider.Id, model.Id);
+                    select(provider.Id, model.Id);
                     return Task.CompletedTask;
                 }));
             }
         }
 
+        rows.InsertRange(0, extraRows ?? []);
         rows.Add(new PaletteItem("Manage providers and API keys…", "Coder Agent", null, () => OpenProviders()));
         var ready = Providers.Where(p => p.IsReady).ToList();
-        _workspace.Palette.Pick(new PickProvider("Pick a model for Coder Agent (or type a model id)", query =>
+        _workspace.Palette.Pick(new PickProvider(title, query =>
         {
             var ranked = CommandPaletteViewModel.Rank(rows, query).ToList();
             if (query.Trim().Length > 0 && !rows.Any(r => r.Label == query.Trim()))
@@ -449,7 +453,7 @@ public sealed partial class AgentViewModel : ObservableObject
                 // Any model id the provider knows, even one it does not list ("auto:smart", a new release).
                 ranked.AddRange(ready.Select(provider => new PaletteItem($"Use \"{query.Trim()}\"", $"with {provider.Config.Name}", null, () =>
                 {
-                    SelectModel(provider.Id, query.Trim());
+                    select(provider.Id, query.Trim());
                     return Task.CompletedTask;
                 })));
             }

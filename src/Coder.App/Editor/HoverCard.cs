@@ -28,12 +28,12 @@ public sealed class HoverCard : Decorator
     {
         MaxWidth = MaxCardWidth;
         IsVisible = false;
-        Child = new ChamferBorder
+        var card = new Border
         {
             Background = Palette.Elevated,
             BorderBrush = Palette.BorderStrong,
-            BorderThickness = 1,
-            Chamfer = Spacing.ChamferSmall,
+            BorderThickness = new Thickness(1),
+            CornerRadius = Spacing.RadiusLarge,
             Child = new ScrollViewer
             {
                 MaxHeight = MaxCardHeight,
@@ -41,6 +41,8 @@ public sealed class HoverCard : Decorator
                 Content = _content,
             },
         };
+        ThemeManager.BindShadow(card, "0 8 24 0");
+        Child = card;
     }
 
     /// <summary>Fills the card; returns false when there is nothing to show.</summary>

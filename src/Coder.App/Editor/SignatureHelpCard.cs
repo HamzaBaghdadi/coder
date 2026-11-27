@@ -3,7 +3,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Media;
-using Coder.App.Controls;
 using Coder.App.Theme;
 using Coder.Presentation.LanguageFeatures;
 
@@ -15,7 +14,7 @@ namespace Coder.App.Editor;
 /// </summary>
 public sealed class SignatureHelpCard : Decorator
 {
-    private readonly SelectableTextBlock _signature = new() { FontFamily = Typography.Code, FontSize = 13, TextWrapping = TextWrapping.Wrap };
+    private readonly SelectableTextBlock _signature = new() { FontFamily = Typography.Code, FontSize = Typography.UiSize, TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock _documentation = new()
     {
         FontSize = Typography.SmallSize,
@@ -23,7 +22,7 @@ public sealed class SignatureHelpCard : Decorator
         TextWrapping = TextWrapping.Wrap,
         MaxLines = 4,
         TextTrimming = TextTrimming.CharacterEllipsis,
-        Margin = new Thickness(0, 4, 0, 0),
+        Margin = new Thickness(0, Spacing.XS, 0, 0),
     };
 
     public SignatureHelpCard()
@@ -31,15 +30,17 @@ public sealed class SignatureHelpCard : Decorator
         MaxWidth = 600;
         IsVisible = false;
         IsHitTestVisible = false; // never in the way of the text under it
-        Child = new ChamferBorder
+        var card = new Border
         {
             Background = Palette.Elevated,
             BorderBrush = Palette.BorderStrong,
-            BorderThickness = 1,
-            Chamfer = Spacing.ChamferSmall,
-            Padding = new Thickness(Spacing.M, 6),
+            BorderThickness = new Thickness(1),
+            CornerRadius = Spacing.RadiusLarge,
+            Padding = new Thickness(Spacing.M, Spacing.S),
             Child = new StackPanel { Children = { _signature, _documentation } },
         };
+        ThemeManager.BindShadow(card, "0 8 24 0");
+        Child = card;
     }
 
     /// <summary>Fills the card from the current help; returns false when there is nothing to show.</summary>

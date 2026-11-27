@@ -11,9 +11,7 @@ public sealed class SideBar : Border
 {
     public SideBar(WorkbenchViewModel workbench)
     {
-        Background = Palette.SideBar;
-        BorderBrush = Palette.Border;
-        BorderThickness = new Thickness(0, 0, 1, 0);
+        Background = Palette.SideBar; // the shell surface: no divider, the inset panels beside it draw the edge
         Child = new Panel
         {
             Children =

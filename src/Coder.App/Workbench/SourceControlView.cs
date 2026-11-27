@@ -23,6 +23,8 @@ namespace Coder.App.Workbench;
 /// </summary>
 public sealed class SourceControlView : DockPanel
 {
+    private const double BadgeHeight = 18;
+
     private readonly SourceControlViewModel _sourceControl;
 
     public SourceControlView(SourceControlViewModel sourceControl)
@@ -32,9 +34,9 @@ public sealed class SourceControlView : DockPanel
 
         var message = new TextBox
         {
-            MinHeight = 30,
+            MinHeight = 32,
             MaxHeight = 140,
-            Padding = new Thickness(8, 6),
+            Padding = new Thickness(Spacing.S, 6),
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
             VerticalContentAlignment = VerticalAlignment.Top,
@@ -134,18 +136,12 @@ public sealed class SourceControlView : DockPanel
             },
         }.Bind(IsVisibleProperty, sourceControl, x => x.HasRepository);
 
-        var noRepository = new TextBlock
-        {
-            Margin = new Thickness(Spacing.L, Spacing.S),
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = Palette.TextSecondary,
-            LineHeight = 20,
-            Text = GitRepository.IsGitInstalled
+        var noRepository = EmptyState(Icons.SourceControl, GitRepository.IsGitInstalled
                 ? "The open folder is not in a git repository. Open a folder inside one to see its changes here."
-                : "Git was not found. Install git and restart Coder to use Source Control.",
-        }.Bind(IsVisibleProperty, sourceControl, x => x.HasRepository, has => !has);
+                : "Git was not found. Install git and restart Coder to use Source Control.")
+            .Bind(IsVisibleProperty, sourceControl, x => x.HasRepository, has => !has);
 
-        Children.Add(SideBarHeader.Create("SOURCE CONTROL",
+        Children.Add(SideBarHeader.Create("Source Control",
             new FlatButton(Icons.Check, "Commit (Ctrl+Enter)") { Command = new RelayCommand(() => _ = sourceControl.CommitAsync()) },
             new FlatButton(Icons.ArrowDown, "Pull") { Command = new RelayCommand(() => _ = sourceControl.PullAsync()) },
             new FlatButton(Icons.ArrowUp, "Push") { Command = new RelayCommand(() => _ = sourceControl.PushAsync()) },
@@ -223,11 +219,8 @@ public sealed class SourceControlView : DockPanel
                 actions.Dock(Dock.Right),
                 new TextBlock
                 {
-                    Text = group.Title.ToUpperInvariant(),
-                    FontSize = Typography.CaptionSize,
-                    FontWeight = FontWeight.SemiBold,
-                    LetterSpacing = 0.4,
-                    Foreground = Palette.TextSecondary,
+                    Classes = { "section-title" },
+                    Text = SentenceCase(group.Title),
                     VerticalAlignment = VerticalAlignment.Center,
                 },
             },
@@ -269,7 +262,7 @@ public sealed class SourceControlView : DockPanel
         {
             Text = row.Folder,
             FontSize = Typography.SmallSize,
-            Foreground = Palette.TextMuted,
+            Foreground = Palette.TextSecondary,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.LeadingCharacterEllipsis,
         };
@@ -284,7 +277,7 @@ public sealed class SourceControlView : DockPanel
                 {
                     Text = change.Letter,
                     Foreground = color,
-                    FontWeight = FontWeight.SemiBold,
+                    FontWeight = Typography.Strong,
                     Width = 16,
                     TextAlignment = TextAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
@@ -310,13 +303,40 @@ public sealed class SourceControlView : DockPanel
     private static FlatButton SmallButton(Avalonia.Media.Geometry icon, string name, Func<Task> action) =>
         new(icon, name, 14) { Width = 22, Height = 22, Command = new RelayCommand(() => _ = action()) };
 
+    /// <summary>A quiet empty state: an icon over one line of help text, top-aligned and centered.</summary>
+    private static StackPanel EmptyState(Avalonia.Media.Geometry icon, string text) => new()
+    {
+        Margin = new Thickness(Spacing.L, Spacing.XL),
+        Spacing = Spacing.S,
+        HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Top,
+        Children =
+        {
+            new Icon(icon, 20) { Foreground = Palette.TextSecondary, HorizontalAlignment = HorizontalAlignment.Center },
+            new TextBlock
+            {
+                Classes = { "secondary" },
+                Text = text,
+                MaxWidth = 260,
+                TextWrapping = TextWrapping.Wrap,
+                TextAlignment = TextAlignment.Center,
+                LineHeight = 20,
+            },
+        },
+    };
+
+    /// <summary>"Staged Changes" as a sentence-case header: "Staged changes".</summary>
+    private static string SentenceCase(string title) =>
+        title.Length == 0 ? title : title[..1] + title[1..].ToLowerInvariant();
+
+    /// <summary>A count as a rounded pill.</summary>
     private static Border CountBadge(int count) => new()
     {
-        MinWidth = 18,
-        Height = 18,
+        MinWidth = BadgeHeight,
+        Height = BadgeHeight,
         Padding = new Thickness(5, 0),
-        Margin = new Thickness(4, 0, 0, 0),
-        CornerRadius = new CornerRadius(9),
+        Margin = new Thickness(Spacing.XS, 0, 0, 0),
+        CornerRadius = new CornerRadius(BadgeHeight / 2),
         Background = Palette.Pressed,
         VerticalAlignment = VerticalAlignment.Center,
         Child = new TextBlock

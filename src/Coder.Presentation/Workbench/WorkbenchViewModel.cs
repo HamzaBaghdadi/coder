@@ -34,7 +34,7 @@ public enum PanelView
 }
 
 /// <summary>Root view model: owns the workbench parts, the commands that connect them, and the session state.</summary>
-public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
+public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposable
 {
     private readonly IDialogService _dialogs;
     private readonly ISettingsStore _settingsStore;
@@ -63,6 +63,8 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
     [
         nameof(EditorFontSize), nameof(ColorTheme), nameof(IsSideBarOnRight), nameof(ActivityBarLocation),
         nameof(IsMinimapVisible), nameof(MinimapRendersCharacters), nameof(TerminalProfileId),
+        nameof(EditorFontFamily), nameof(EditorLineHeight), nameof(SecondarySideBarDefaultWidth),
+        nameof(CursorStyle), nameof(CursorBlinking), nameof(TerminalFontSize), nameof(TerminalFontFamily),
     ];
 
     /// <param name="languageServers">Starts language servers; null turns language features off (tests).</param>
@@ -97,7 +99,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
         Find = new FindViewModel(Editors);
         Languages = new LanguageServices(languageServers, Editors, () => Explorer.RootPath, CustomLanguageServers);
         Languages.Notice += (_, message) => StatusBar.Message = message;
-        Completion = new CompletionViewModel(Languages, Editors);
+        Completion = new CompletionViewModel(Languages, Editors, new Coder.Core.Snippets.SnippetCatalog(_extensionStore), () => Explorer.RootPath);
         SignatureHelp = new SignatureHelpViewModel(Languages, Editors);
         SourceControl = new SourceControlViewModel(Explorer, Editors, dialogs, OpenFileAsync);
         SourceControl.Blame.IsInlineEnabled = Settings.InlineBlame;
@@ -131,6 +133,12 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
         Problems = new ProblemsViewModel(Languages, () => Explorer.RootPath, RevealAsync);
         References = new ReferencesViewModel(Languages, Editors, () => Explorer.RootPath, RevealAsync);
         InlayHints = new InlayHintsService(Languages, Editors) { IsEnabled = Settings.InlayHints };
+        StickyScroll = new StickyScrollService(Languages, Editors) { IsEnabled = Settings.StickyScroll };
+        InlineSuggestions = new Coder.Presentation.Agent.InlineSuggestionsViewModel(Editors, Completion, ResolveInlineSuggestionsModel, () => Explorer.RootPath)
+        {
+            IsEnabled = Settings.InlineSuggestions,
+            Delay = TimeSpan.FromMilliseconds(Math.Clamp(Settings.InlineSuggestionsDelay, 0, 5000)),
+        };
         var edits = new WorkspaceEditApplier(fileSystem, Editors, Languages);
         LanguageCommands = new LanguageCommands(Languages, Editors, Palette, edits, message => StatusBar.Message = message, managed is null ? null : new Coder.Core.Formatting.PrettierFormatter(managed));
         Languages.EditRequested += async (_, edit) =>
@@ -151,6 +159,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
         Explorer.PathMoved += (_, move) => Editors.FollowMove(move.From, move.To);
         Explorer.PathDeleted += async (_, path) => await Editors.CloseDeletedAsync(path);
         Editors.Saved += async (_, tab) => await OnSavedAsync(tab);
+        WireEditorSettings();
         Explorer.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(ExplorerViewModel.RootPath) or "" or null)
@@ -185,6 +194,20 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
                 Sync?.NotifyLocalChange();
             }
         };
+        StickyScroll.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(StickyScrollService.IsEnabled))
+            {
+                Sync?.NotifyLocalChange();
+            }
+        };
+        InlineSuggestions.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(Coder.Presentation.Agent.InlineSuggestionsViewModel.IsEnabled))
+            {
+                Sync?.NotifyLocalChange();
+            }
+        };
         SourceControl.Blame.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(SourceControl.Blame.IsInlineEnabled))
@@ -193,6 +216,16 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
             }
         };
         RegisterCommands();
+    }
+
+    /// <summary>
+    /// "Shell Command: Install 'coder' Command in PATH" (and "Open with Coder" in File Explorer), like VS
+    /// Code's; the installer does it too. Only where the app provides it (Windows).
+    /// </summary>
+    public void EnableShellIntegration(IShellIntegration shell)
+    {
+        Register(CommandIds.InstallShellCommand, "Shell Command", "Install 'coder' Command in PATH and 'Open with Coder'", null, () => StatusBar.Message = shell.Install());
+        Register(CommandIds.UninstallShellCommand, "Shell Command", "Uninstall 'coder' Command from PATH and 'Open with Coder'", null, () => StatusBar.Message = shell.Uninstall());
     }
 
     /// <summary>Settings Sync (sign in with GitHub); null until <see cref="EnableSettingsSync"/> (tests leave it off).</summary>
@@ -224,6 +257,27 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
     public Coder.Presentation.Agent.AgentViewModel? Agent { get; private set; }
 
     /// <summary>Turns on Coder Agent: the chat, its commands and its providers.</summary>
+    /// <summary>Runs extension programs (null until <see cref="EnableExtensionHost"/>).</summary>
+    public Coder.Presentation.Extensions.ExtensionHost? ExtensionHost { get; private set; }
+
+    /// <summary>
+    /// Lets installed extensions run their programs, with the <see cref="Coder.Presentation.Extensions.EditorApi"/>.
+    /// Their commands are registered at once; call <see cref="Coder.Presentation.Extensions.ExtensionHost.StartAsync"/>
+    /// once the window is up (it may ask the user's consent).
+    /// </summary>
+    public Coder.Presentation.Extensions.ExtensionHost EnableExtensionHost(Coder.Presentation.Extensions.IExtensionLauncher? launcher = null)
+    {
+        if (ExtensionHost is not null)
+        {
+            return ExtensionHost;
+        }
+
+        var trust = new Coder.Core.Extensions.ExtensionTrust(Path.Combine(_extensionStore.Folder, ".trust.json"));
+        ExtensionHost = new Coder.Presentation.Extensions.ExtensionHost(_extensionStore, trust, _dialogs, Commands,
+            new Coder.Presentation.Extensions.EditorApi(this, _fileSystem), launcher, message => StatusBar.Message = message);
+        return ExtensionHost;
+    }
+
     public Coder.Presentation.Agent.AgentViewModel EnableAgent(Coder.Presentation.Agent.AgentServices services)
     {
         if (Agent is not null)
@@ -263,8 +317,89 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
                 await Agent.AddPathsAsync([path]);
             }
         });
+        Register(CommandIds.PickInlineSuggestionsModel, "Coder Agent", "Select Inline Suggestions Model…", null, PickInlineSuggestionsModelAsync);
+
+        // Keys, providers and the agent's model decide where suggestions come from.
+        void Watch(Coder.Presentation.Agent.AgentProviderViewModel provider) => provider.PropertyChanged += (_, _) => InlineSuggestions.RefreshStatus();
+        foreach (var provider in Agent.Providers)
+        {
+            Watch(provider);
+        }
+
+        Agent.Providers.CollectionChanged += (_, e) =>
+        {
+            foreach (var provider in e.NewItems?.OfType<Coder.Presentation.Agent.AgentProviderViewModel>() ?? [])
+            {
+                Watch(provider);
+            }
+
+            InlineSuggestions.RefreshStatus();
+        };
+        Agent.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(Agent.Model) or nameof(Agent.ProviderId))
+            {
+                InlineSuggestions.RefreshStatus();
+            }
+        };
+        InlineSuggestions.RefreshStatus();
         OnPropertyChanged(nameof(Agent));
         return Agent;
+    }
+
+    /// <summary>AI inline suggestions ("ghost text") in the editor.</summary>
+    public Coder.Presentation.Agent.InlineSuggestionsViewModel InlineSuggestions { get; }
+
+    /// <summary>
+    /// Where inline suggestions come from: the provider and model chosen for them, else Coder Agent's.
+    /// Null when that provider is missing, has no key, or no model is known.
+    /// </summary>
+    private Coder.Presentation.Agent.InlineSuggestionModel? ResolveInlineSuggestionsModel()
+    {
+        if (Agent is not { } agent)
+        {
+            return null;
+        }
+
+        var own = Settings.InlineSuggestionsProvider.Length > 0;
+        var providerId = own ? Settings.InlineSuggestionsProvider : agent.ProviderId;
+        if (agent.Providers.FirstOrDefault(p => p.Id == providerId) is not { IsReady: true } provider)
+        {
+            return null;
+        }
+
+        var model = own ? Settings.InlineSuggestionsModel : agent.Model;
+        if (model.Length == 0)
+        {
+            model = Coder.Core.Ai.AiProviders.DefaultModel(provider.Kind) ?? string.Empty;
+        }
+
+        return model.Length == 0 ? null : new(provider.CreateClient(), model, $"{provider.FindModel(model)?.DisplayName ?? model} · {provider.Config.Name}");
+    }
+
+    /// <summary>Picks the model for inline suggestions in the palette ("Same as Coder Agent" first).</summary>
+    public Task PickInlineSuggestionsModelAsync()
+    {
+        if (Agent is not { } agent)
+        {
+            return Task.CompletedTask;
+        }
+
+        void Select(string provider, string model)
+        {
+            Settings.InlineSuggestionsProvider = provider;
+            Settings.InlineSuggestionsModel = model;
+            InlineSuggestions.RefreshStatus();
+            _settingsPage?.RefreshAll();
+            Sync?.NotifyLocalChange();
+        }
+
+        var same = new PaletteItem("Same as Coder Agent", agent.ModelLabel, Settings.InlineSuggestionsProvider.Length == 0 ? "current" : null, () =>
+        {
+            Select(string.Empty, string.Empty);
+            return Task.CompletedTask;
+        });
+        return agent.ShowModelPickerAsync("Pick a model for inline suggestions (a small, fast one works best)", Settings.InlineSuggestionsProvider, Settings.InlineSuggestionsModel, Select, [same]);
     }
 
     /// <summary>Shows the secondary side bar with the chat and puts the caret in its input.</summary>
@@ -288,6 +423,9 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
         TerminalProfile = _terminalProfile,
         InlineBlame = SourceControl.Blame.IsInlineEnabled,
         InlayHints = InlayHints.IsEnabled,
+        StickyScroll = StickyScroll.IsEnabled,
+        InlineSuggestions = InlineSuggestions.IsEnabled,
+        InlineSuggestionsDelay = InlineSuggestions.Delay.TotalMilliseconds,
         SideBarLocation = IsSideBarOnRight ? "right" : "left",
         ShowMinimap = IsMinimapVisible,
         MinimapRenderCharacters = MinimapRendersCharacters,
@@ -298,6 +436,22 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
     public void ApplySyncedSettings(UserSettings synced)
     {
         EditorFontSize = synced.EditorFontSize;
+        EditorFontFamily = synced.EditorFontFamily ?? string.Empty;
+        EditorLineHeight = synced.EditorLineHeight;
+        SecondarySideBarDefaultWidth = synced.SecondarySideBarDefaultWidth;
+        CursorStyle = synced.CursorStyle ?? "line";
+        CursorBlinking = synced.CursorBlinking;
+        TerminalFontSize = synced.TerminalFontSize;
+        TerminalFontFamily = synced.TerminalFontFamily ?? string.Empty;
+        Settings.TabSize = synced.TabSize;
+        Settings.InsertSpaces = synced.InsertSpaces;
+        Settings.DetectIndentation = synced.DetectIndentation;
+        Settings.AutoSave = synced.AutoSave ?? "off";
+        Settings.AutoSaveDelay = synced.AutoSaveDelay;
+        Settings.FormatOnSave = synced.FormatOnSave;
+        Settings.TrimTrailingWhitespace = synced.TrimTrailingWhitespace;
+        Settings.InsertFinalNewline = synced.InsertFinalNewline;
+        Editors.ReapplyOptions();
         ColorTheme = synced.ColorTheme ?? ColorTheme;
         IsSideBarOnRight = synced.SideBarLocation == "right";
         ActivityBarLocation = synced.ActivityBarLocation ?? "side";
@@ -306,9 +460,14 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
         TerminalProfileId = synced.TerminalProfile ?? string.Empty;
         SourceControl.Blame.IsInlineEnabled = synced.InlineBlame;
         InlayHints.IsEnabled = synced.InlayHints;
+        StickyScroll.IsEnabled = synced.StickyScroll;
+        InlineSuggestions.IsEnabled = synced.InlineSuggestions;
+        InlineSuggestions.Delay = TimeSpan.FromMilliseconds(Math.Clamp(synced.InlineSuggestionsDelay, 0, 5000));
         var previousServers = Settings.LanguageServers;
         Settings = Settings with
         {
+            InlineSuggestionsProvider = synced.InlineSuggestionsProvider ?? string.Empty,
+            InlineSuggestionsModel = synced.InlineSuggestionsModel ?? string.Empty,
             SideBarDefaultWidth = synced.SideBarDefaultWidth,
             ExplorerAutoReveal = synced.ExplorerAutoReveal,
             ExtensionRegistry = synced.ExtensionRegistry ?? string.Empty,
@@ -316,6 +475,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
             LanguageServers = synced.LanguageServers ?? [],
         };
         _settingsPage?.RefreshAll();
+        InlineSuggestions.RefreshStatus();
         if (!previousServers.SequenceEqual(Settings.LanguageServers, LanguageServerSettingComparer.Instance))
         {
             _ = Languages.RestartAsync();
@@ -517,8 +677,9 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
     private List<SettingItem> CreateSettingItems() =>
     [
         new ChoiceSetting("Appearance", "Color Theme", "The colors of the whole window. \"Follow system\" switches with Windows' light or dark mode.",
-            [new("dark", "Midnight Blue (dark)"), new("light", "Daylight (light)"), new("hc-dark", "High Contrast Dark"), new("hc-light", "High Contrast Light"), new("system", "Follow system")],
-            () => ColorTheme, value => ColorTheme = value) { Keywords = "dark light theme colour" },
+            [new("dark", "Obsidian (dark)"), new("light", "Daylight (light)"), new("hc-dark", "High Contrast Dark"), new("hc-light", "High Contrast Light"), new("system", "Follow system")],
+            () => ColorTheme, value => ColorTheme = value) { Keywords = "dark light theme colour vs code monokai" }
+            .WithOptionsFrom(FindInstalledThemeOptionsAsync),
         new ChoiceSetting("Appearance", "Primary Side Bar Position", "Which side the Explorer, Search and Source Control are on. The secondary side bar takes the other side.",
             [new("left", "Left"), new("right", "Right")],
             () => IsSideBarOnRight ? "right" : "left", value => IsSideBarOnRight = value == "right") { Keywords = "layout sidebar" },
@@ -527,24 +688,73 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
             () => ActivityBarLocation, value => ActivityBarLocation = value) { Keywords = "layout icons" },
         new NumberSetting("Appearance", "Side Bar Default Width", "The width, in pixels, that double-clicking the side bar's edge returns it to.",
             () => Settings.SideBarDefaultWidth, value => { Settings.SideBarDefaultWidth = value; Sync?.NotifyLocalChange(); }, 170, 800) { Keywords = "layout sidebar size" },
+        new NumberSetting("Appearance", "Secondary Side Bar Default Width", "The width, in pixels, Coder Agent's side bar opens at, and what double-clicking its edge returns it to.",
+            () => SecondarySideBarDefaultWidth, value => SecondarySideBarDefaultWidth = value, 240, 900) { Keywords = "layout agent chat size secondary" },
 
-        new NumberSetting("Editor", "Font Size", "The size of code in the editor and terminal. Ctrl+= and Ctrl+- change it too.",
+        new ChoiceSetting("Editor", "Font Family", "The font code is shown in, in the editor. Default uses the first installed of JetBrains Mono, Cascadia Code, Fira Code, Consolas.",
+            [new(string.Empty, "Default"), .. CodeFonts.Select(font => new SettingOption(font, font))],
+            () => EditorFontFamily, value => EditorFontFamily = value) { Keywords = "font typeface monospace text" },
+        new NumberSetting("Editor", "Font Size", "The size of code in the editor. Ctrl+= and Ctrl+- change it too.",
             () => EditorFontSize, value => EditorFontSize = value, 8, 40) { Keywords = "zoom text" },
+        new ChoiceSetting("Editor", "Line Height", "The space each line of code takes, as a multiple of the font size.",
+            [.. ((double[])[1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2.0]).Select(h => new SettingOption(h.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture), h == 1.5 ? "1.5 (default)" : h.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)))],
+            () => EditorLineHeight.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture),
+            value => EditorLineHeight = double.Parse(value, System.Globalization.CultureInfo.InvariantCulture)) { Keywords = "spacing leading density" },
+        new ChoiceSetting("Editor", "Cursor Style", "The shape of the caret.",
+            [new("line", "Line"), new("block", "Block"), new("underline", "Underline")],
+            () => CursorStyle, value => CursorStyle = value) { Keywords = "caret cursor block" },
+        new ToggleSetting("Editor", "Cursor Blinking", "The caret blinks. Off keeps it steady.",
+            () => CursorBlinking, value => CursorBlinking = value) { Keywords = "caret cursor blink" },
+        new ChoiceSetting("Editor", "Tab Size", "Spaces per indent level, and how wide a tab character shows, for files that don't show their own.",
+            [new("2", "2"), new("4", "4"), new("8", "8")],
+            () => Settings.TabSize.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            value => { Settings.TabSize = int.Parse(value, System.Globalization.CultureInfo.InvariantCulture); Editors.ReapplyOptions(); Sync?.NotifyLocalChange(); }) { Keywords = "indent indentation width spaces" },
+        new ToggleSetting("Editor", "Insert Spaces", "Tab inserts spaces. Off inserts a tab character.",
+            () => Settings.InsertSpaces, value => { Settings.InsertSpaces = value; Editors.ReapplyOptions(); Sync?.NotifyLocalChange(); }) { Keywords = "indent indentation tabs" },
+        new ToggleSetting("Editor", "Detect Indentation", "A file's own indentation (tabs, 2 or 4 spaces…) wins over Tab Size and Insert Spaces when it opens.",
+            () => Settings.DetectIndentation, value => { Settings.DetectIndentation = value; Editors.ReapplyOptions(); Sync?.NotifyLocalChange(); }) { Keywords = "indent indentation auto guess" },
         new ToggleSetting("Editor", "Minimap", "The code in miniature on the editor's right edge, to see where you are and jump around.",
             () => IsMinimapVisible, value => IsMinimapVisible = value) { Keywords = "overview scroll" },
         new ToggleSetting("Editor", "Minimap: Render Characters", "Draw every word in the minimap as its own mark. Off draws each line as a few solid blocks in the code's colors.",
             () => MinimapRendersCharacters, value => MinimapRendersCharacters = value) { Keywords = "minimap blocks" },
         new ToggleSetting("Editor", "Inlay Hints", "Parameter names and inferred types shown inside the code, from the language server.",
             () => InlayHints.IsEnabled, value => InlayHints.IsEnabled = value) { Keywords = "types parameters" },
+        new ToggleSetting("Editor", "Sticky Scroll", "Keep the headers of the blocks you are scrolling through (class, method, if…) pinned at the top of the editor. Click one to go to it.",
+            () => StickyScroll.IsEnabled, value => StickyScroll.IsEnabled = value) { Keywords = "scope header pinned outline" },
         new ToggleSetting("Editor", "Inline Blame", "Who last changed the current line, and when, shown at the end of it.",
             () => SourceControl.Blame.IsInlineEnabled, value => SourceControl.Blame.IsInlineEnabled = value) { Keywords = "git author" },
+        new ToggleSetting("Editor", "Inline Suggestions", "AI code suggestions in gray after the caret while you type, from Coder Agent's providers. Tab accepts, Ctrl+Right accepts the next word, Esc dismisses.",
+            () => InlineSuggestions.IsEnabled, value => InlineSuggestions.IsEnabled = value) { Keywords = "ai copilot autocomplete ghost text completion agent" },
+        new NumberSetting("Editor", "Inline Suggestions: Delay", "How long typing must pause, in milliseconds, before a suggestion is asked for.",
+            () => InlineSuggestions.Delay.TotalMilliseconds, value => { InlineSuggestions.Delay = TimeSpan.FromMilliseconds(value); Sync?.NotifyLocalChange(); }, 0, 5000) { Keywords = "ai copilot debounce" },
+        new ActionSetting("Editor", "Inline Suggestions: Model", "The model suggestions come from. A small, fast model answers sooner; by default it is Coder Agent's.",
+            () => Settings.InlineSuggestionsProvider.Length == 0 ? $"Same as Coder Agent ({InlineSuggestions.ModelLabel})" : InlineSuggestions.ModelLabel,
+            () => "Change Model…",
+            PickInlineSuggestionsModelAsync) { Keywords = "ai copilot provider openrouter ollama freellmapi" },
 
         new ToggleSetting("Explorer", "Auto Reveal", "The explorer selects the file you are editing, opening its folders.",
             () => Settings.ExplorerAutoReveal, value => { Settings.ExplorerAutoReveal = value; Sync?.NotifyLocalChange(); }) { Keywords = "files tree follow" },
 
+        new ChoiceSetting("Files", "Auto Save", "Save files without pressing Ctrl+S: after you stop typing, or when you switch to another tab or window.",
+            [new("off", "Off"), new("afterDelay", "After a delay"), new("onFocusChange", "On focus change")],
+            () => Settings.AutoSave, value => { Settings.AutoSave = value; Sync?.NotifyLocalChange(); }) { Keywords = "autosave save automatically" },
+        new NumberSetting("Files", "Auto Save Delay", "With \"After a delay\", how long typing must pause, in milliseconds, before the file is saved.",
+            () => Settings.AutoSaveDelay, value => { Settings.AutoSaveDelay = value; Sync?.NotifyLocalChange(); }, 100, 60000) { Keywords = "autosave milliseconds" },
+        new ToggleSetting("Files", "Format On Save", "Format the document (with its language server, or Prettier for web files) when you save it with Ctrl+S.",
+            () => Settings.FormatOnSave, value => { Settings.FormatOnSave = value; Sync?.NotifyLocalChange(); }) { Keywords = "format prettier beautify save" },
+        new ToggleSetting("Files", "Trim Trailing Whitespace", "Remove spaces and tabs at the ends of lines when saving.",
+            () => Settings.TrimTrailingWhitespace, value => { Settings.TrimTrailingWhitespace = value; Sync?.NotifyLocalChange(); }) { Keywords = "whitespace spaces save clean" },
+        new ToggleSetting("Files", "Insert Final Newline", "End files with a newline when saving.",
+            () => Settings.InsertFinalNewline, value => { Settings.InsertFinalNewline = value; Sync?.NotifyLocalChange(); }) { Keywords = "newline eol end of file save" },
+
         new ChoiceSetting("Terminal", "Default Shell", "The shell new terminals start.",
             ShellProfiles.Select(p => new SettingOption(p.Id, p.Name)).ToList(),
             () => TerminalProfileId, value => TerminalProfileId = value) { Keywords = "powershell cmd bash wsl profile" },
+        new ChoiceSetting("Terminal", "Terminal Font Family", "The terminal's font. Default uses the editor's list (JetBrains Mono, Cascadia Code, …, the first installed).",
+            [new(string.Empty, "Default"), .. CodeFonts.Select(font => new SettingOption(font, font))],
+            () => TerminalFontFamily, value => TerminalFontFamily = value) { Keywords = "font typeface monospace terminal" },
+        new NumberSetting("Terminal", "Terminal Font Size", "The size of text in the terminal.",
+            () => TerminalFontSize, value => TerminalFontSize = value, 8, 40) { Keywords = "font text terminal zoom" },
 
         new ToggleSetting("Performance", "GPU Acceleration", "Draw with the graphics card: smoother scrolling with half the processor work. Off saves about 100 MB of memory (the graphics driver's share).",
             () => GpuAcceleration, value => GpuAcceleration = value) { Keywords = "memory ram rendering", Note = "Applies after a restart." },
@@ -602,6 +812,9 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
     /// <summary>Parameter names and inferred types shown inside the code.</summary>
     public InlayHintsService InlayHints { get; }
 
+    /// <summary>Block headers pinned at the top of the editor while scrolling.</summary>
+    public StickyScrollService StickyScroll { get; }
+
     /// <summary>The References panel (Find All References).</summary>
     public ReferencesViewModel References { get; }
 
@@ -635,6 +848,16 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
     {
         IsTerminalVisible = true;
         TerminalAtFolderRequested?.Invoke(this, folder);
+    }
+
+    /// <summary>Asks the terminal panel for a named terminal running a command, with extra environment variables (extensions).</summary>
+    public event EventHandler<TerminalRequest>? TerminalRequested;
+
+    /// <summary>Opens a new terminal in the default shell, named, with the request's variables, and types its command into it.</summary>
+    public void OpenTerminal(TerminalRequest request)
+    {
+        IsTerminalVisible = true;
+        TerminalRequested?.Invoke(this, request);
     }
 
     /// <summary>Asks the terminal panel to open find in the active terminal.</summary>
@@ -679,6 +902,57 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
         get => _colorTheme;
         set => SetProperty(ref _colorTheme, value);
     }
+
+    /// <summary>The code font's family ("" = the built-in preference list). Kept in <see cref="Settings"/>.</summary>
+    public string EditorFontFamily
+    {
+        get => Settings.EditorFontFamily;
+        set
+        {
+            if (Settings.EditorFontFamily != value)
+            {
+                Settings.EditorFontFamily = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    /// <summary>Editor line height as a multiple of the font size (1.2–2.0).</summary>
+    public double EditorLineHeight
+    {
+        get => Settings.EditorLineHeight;
+        set
+        {
+            var clamped = Math.Clamp(value, 1.2, 2.0);
+            if (Settings.EditorLineHeight != clamped)
+            {
+                Settings.EditorLineHeight = clamped;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    /// <summary>The secondary side bar's opening width (and what double-clicking its edge returns it to).</summary>
+    public double SecondarySideBarDefaultWidth
+    {
+        get => Settings.SecondarySideBarDefaultWidth;
+        set
+        {
+            var clamped = Math.Clamp(value, 240, 900);
+            if (Settings.SecondarySideBarDefaultWidth != clamped)
+            {
+                Settings.SecondarySideBarDefaultWidth = clamped;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    /// <summary>Coding fonts installed on this machine, for the Font Family setting (the app fills it in).</summary>
+    public IReadOnlyList<string> CodeFonts { get; set; } = [];
+
+    /// <summary>Installed color themes (VS Code's and extensions'), for the Color Theme setting.</summary>
+    private async Task<IEnumerable<SettingOption>> FindInstalledThemeOptionsAsync() =>
+        _themes is null ? [] : (await _themes.FindAsync()).Select(theme => new SettingOption(theme.Id, theme.Label)).ToList();
 
     public double EditorFontSize
     {
@@ -775,8 +1049,15 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
         Updates.Dispose();
         Completion.Dispose();
         InlayHints.Dispose();
+        StickyScroll.Dispose();
+        InlineSuggestions.Dispose();
         SourceControl.Dispose();
         _reloader.Dispose();
+        if (ExtensionHost is not null)
+        {
+            await ExtensionHost.DisposeAsync(); // extension programs end with Coder
+        }
+
         await Languages.DisposeAsync();
     }
 
@@ -917,7 +1198,7 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
 
         List<PaletteItem> items =
         [
-            Item("dark", "Midnight Blue", "Dark: near-black navy, easy on the eyes for long sessions"),
+            Item("dark", "Obsidian", "Dark: a soft neutral black, easy on the eyes for long sessions"),
             Item("light", "Daylight", "Light: bright and crisp, for well-lit rooms"),
             Item("hc-dark", "High Contrast Dark", "Black with bright outlines and text, for low vision and glare"),
             Item("hc-light", "High Contrast Light", "White with deep outlines and black text"),
@@ -1187,10 +1468,21 @@ public sealed class WorkbenchViewModel : ObservableObject, IAsyncDisposable
         Register(CommandIds.FindReferences, "Go", "Find All References", "Shift+F12", FindReferencesAsync);
         Register(CommandIds.NextReference, "Go", "Next Reference", "F4", () => References.StepAsync(1));
         Register(CommandIds.PreviousReference, "Go", "Previous Reference", "Shift+F4", () => References.StepAsync(-1));
+        Register(CommandIds.ToggleInlineSuggestions, "Coder Agent", "Toggle Inline Suggestions", null, () =>
+        {
+            InlineSuggestions.Toggle();
+            StatusBar.Message = InlineSuggestions.IsEnabled ? "Inline suggestions on" : "Inline suggestions off";
+        });
+        Register(CommandIds.TriggerInlineSuggestion, "Coder Agent", "Trigger Inline Suggestion", null,InlineSuggestions.TriggerAsync);
         Register(CommandIds.ToggleInlayHints, "View", "Toggle Inlay Hints", null, () =>
         {
             InlayHints.IsEnabled = !InlayHints.IsEnabled;
             StatusBar.Message = InlayHints.IsEnabled ? "Inlay hints shown" : "Inlay hints hidden";
+        });
+        Register(CommandIds.ToggleStickyScroll, "View", "Toggle Sticky Scroll", null, () =>
+        {
+            StickyScroll.IsEnabled = !StickyScroll.IsEnabled;
+            StatusBar.Message = StickyScroll.IsEnabled ? "Sticky scroll on" : "Sticky scroll off";
         });
         Register(CommandIds.RenameSymbol, "Edit", "Rename Symbol", "F2", LanguageCommands.Rename);
         Register(CommandIds.QuickFix, "Edit", "Quick Fix…", "Ctrl+OemPeriod", LanguageCommands.QuickFixAsync);
