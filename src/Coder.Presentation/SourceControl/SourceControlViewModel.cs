@@ -19,7 +19,11 @@ public enum SourceControlGroup
 /// <summary>A row of the Source Control list: a group header or a changed file.</summary>
 public abstract record SourceControlRow(SourceControlGroup Group);
 
-public sealed record SourceControlGroupRow(SourceControlGroup Group, string Title, int Count) : SourceControlRow(Group);
+public sealed record SourceControlGroupRow(SourceControlGroup Group, string Title, int Count) : SourceControlRow(Group)
+{
+    /// <summary>Whether the group's files are listed under it (clicking the header folds it, like VS Code).</summary>
+    public bool IsExpanded { get; init; } = true;
+}
 
 public sealed record SourceControlFileRow(SourceControlGroup Group, GitChange Change) : SourceControlRow(Group)
 {
@@ -46,6 +50,7 @@ public sealed partial class SourceControlViewModel : ObservableObject, IDisposab
     private readonly QuickDiff _quickDiff;
     private GitRepository? _repository;
     private GitStatus? _status;
+    private readonly HashSet<SourceControlGroup> _collapsed = [];
     private FileSystemWatcher? _watcher;
     private string _commitMessage = string.Empty;
     private string _message = string.Empty;
@@ -422,10 +427,7 @@ public sealed partial class SourceControlViewModel : ObservableObject, IDisposab
     private void Apply(GitStatus status)
     {
         _status = status;
-        Rows.Clear();
-        AddGroup(SourceControlGroup.Conflicts, "Merge Changes", status.Conflicts);
-        AddGroup(SourceControlGroup.Staged, "Staged Changes", status.Staged);
-        AddGroup(SourceControlGroup.Changes, "Changes", status.Unstaged);
+        RebuildRows(status);
         OnPropertyChanged(nameof(BranchText));
         OnPropertyChanged(nameof(SyncText));
         OnPropertyChanged(nameof(ChangeCount));
@@ -483,15 +485,48 @@ public sealed partial class SourceControlViewModel : ObservableObject, IDisposab
             return;
         }
 
-        Rows.Add(new SourceControlGroupRow(group, title, changes.Count));
+        var expanded = !_collapsed.Contains(group);
+        Rows.Add(new SourceControlGroupRow(group, title, changes.Count) { IsExpanded = expanded });
+        if (!expanded)
+        {
+            return; // folded: the header keeps its count and actions, the files are hidden
+        }
+
         foreach (var change in changes.OrderBy(c => c.RelativePath, StringComparer.OrdinalIgnoreCase))
         {
             Rows.Add(new SourceControlFileRow(group, change));
         }
     }
 
-    private IEnumerable<GitChange> ChangesIn(SourceControlGroup group) =>
-        Rows.OfType<SourceControlFileRow>().Where(r => r.Group == group).Select(r => r.Change);
+    /// <summary>Folds or unfolds a group (Merge Changes, Staged Changes, Changes); it stays so across refreshes.</summary>
+    public void ToggleGroup(SourceControlGroup group)
+    {
+        if (!_collapsed.Remove(group))
+        {
+            _collapsed.Add(group);
+        }
+
+        if (_status is not null)
+        {
+            RebuildRows(_status);
+        }
+    }
+
+    private void RebuildRows(GitStatus status)
+    {
+        Rows.Clear();
+        AddGroup(SourceControlGroup.Conflicts, "Merge Changes", status.Conflicts);
+        AddGroup(SourceControlGroup.Staged, "Staged Changes", status.Staged);
+        AddGroup(SourceControlGroup.Changes, "Changes", status.Unstaged);
+    }
+
+    /// <summary>A group's changes from the status (not the rows, which leave out the files of folded groups).</summary>
+    private IEnumerable<GitChange> ChangesIn(SourceControlGroup group) => group switch
+    {
+        SourceControlGroup.Conflicts => _status?.Conflicts ?? [],
+        SourceControlGroup.Staged => _status?.Staged ?? [],
+        _ => _status?.Unstaged ?? [],
+    };
 
     /// <summary>Runs a git operation, then refreshes. Errors become <see cref="Message"/>. Returns whether it succeeded.</summary>
     private async Task<bool> RunAsync(Func<GitRepository, Task> operation, string? progress = null)

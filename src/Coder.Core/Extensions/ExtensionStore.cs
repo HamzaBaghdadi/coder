@@ -298,6 +298,13 @@ public sealed class ExtensionStore(string folder, HttpClient http)
                 ? snippetList.EnumerateArray().Where(s => String(s, "path") is not null).Select(s => String(s, "language") ?? "*").Distinct(StringComparer.OrdinalIgnoreCase).ToList()
                 : [];
             var display = String(root, "displayName");
+            var views = root.TryGetProperty("coder", out var coderSection) && coderSection.ValueKind == JsonValueKind.Object
+                        && coderSection.TryGetProperty("views", out var viewList) && viewList.ValueKind == JsonValueKind.Array
+                ? viewList.EnumerateArray()
+                    .Where(v => String(v, "id") is { Length: > 0 } && String(v, "title") is { Length: > 0 } && (String(v, "location") ?? "secondarySidebar") == "secondarySidebar")
+                    .Select(v => new ExtensionView(String(v, "id")!, String(v, "title")!, String(v, "command")))
+                    .ToList()
+                : [];
             var programs = root.TryGetProperty("coder", out var coder) && coder.ValueKind == JsonValueKind.Object
                            && coder.TryGetProperty("program", out var program) && program.ValueKind == JsonValueKind.Object
                 ? program.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String).ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.OrdinalIgnoreCase)
@@ -316,6 +323,7 @@ public sealed class ExtensionStore(string folder, HttpClient http)
                 DeclaresProgram = programs.Count > 0,
                 ProgramPath = programs.TryGetValue(Platform.RuntimeId, out var relative) ? Inside(directory, relative) : null,
                 Commands = Commands(contributes, display is null || display.StartsWith('%') ? name : display),
+                Views = views,
                 Source = TextFile(directory, SourceFile),
                 PackageSha256 = TextFile(directory, Sha256File),
             };

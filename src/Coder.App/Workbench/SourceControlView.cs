@@ -101,26 +101,54 @@ public sealed class SourceControlView : DockPanel
         changes.ContainerPrepared += (_, e) => AutomationProperties.SetName(e.Container, e.Container.DataContext switch
         {
             SourceControlFileRow file => $"{file.Change.RelativePath}, {file.Change.Kind}",
-            SourceControlGroupRow group => $"{group.Title}, {group.Count}",
+            SourceControlGroupRow group => $"{group.Title}, {group.Count}, {(group.IsExpanded ? "expanded" : "collapsed")}",
             _ => string.Empty,
         });
         ScrollViewer.SetHorizontalScrollBarVisibility(changes, Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled);
         // Clicking a file shows its changes; the row's Open File button opens the file itself.
         changes.Tapped += async (_, e) =>
         {
-            if (e.Source is Visual { DataContext: SourceControlFileRow row } source && source.FindAncestorOfType<Button>() is null)
+            if (e.Source is not Visual source || source.FindAncestorOfType<Button>() is not null)
             {
-                await sourceControl.OpenChangesAsync(row);
+                return; // a row's own buttons (stage, discard…) do their thing
+            }
+
+            switch (source.DataContext)
+            {
+                case SourceControlFileRow row:
+                    await sourceControl.OpenChangesAsync(row);
+                    break;
+                case SourceControlGroupRow group:
+                    ToggleKeepingSelection(group.Group);
+                    break;
             }
         };
         changes.OnRowKeyDown(async (_, e) =>
         {
-            if (e.Key == Key.Enter && changes.SelectedItem is SourceControlFileRow row)
+            switch (changes.SelectedItem)
             {
-                e.Handled = true;
-                await sourceControl.OpenChangesAsync(row);
+                case SourceControlFileRow row when e.Key == Key.Enter:
+                    e.Handled = true;
+                    await sourceControl.OpenChangesAsync(row);
+                    break;
+                case SourceControlGroupRow group when e.Key is Key.Enter or Key.Space
+                    || (e.Key == Key.Left && group.IsExpanded) || (e.Key == Key.Right && !group.IsExpanded):
+                    e.Handled = true;
+                    ToggleKeepingSelection(group.Group);
+                    break;
             }
         });
+
+        // Folding rebuilds the rows: put the selection (and keyboard) back on the same header.
+        void ToggleKeepingSelection(SourceControlGroup group)
+        {
+            sourceControl.ToggleGroup(group);
+            if (sourceControl.Rows.OfType<SourceControlGroupRow>().FirstOrDefault(r => r.Group == group) is { } header)
+            {
+                changes.SelectedItem = header;
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => changes.ContainerFromItem(header)?.Focus());
+            }
+        }
 
         var repositoryContent = new DockPanel
         {
@@ -209,14 +237,22 @@ public sealed class SourceControlView : DockPanel
             actions.Children.Add(SmallButton(Icons.Plus, "Stage All Changes", () => _sourceControl.StageAllAsync()));
         }
 
-        return new DockPanel
+        // The chevron folds the group, like VS Code: pointing down when its files show, right when folded.
+        var header = new DockPanel
         {
-            Margin = new Thickness(Spacing.M, 0, Spacing.S, 0),
+            Margin = new Thickness(Spacing.XS, 0, Spacing.S, 0),
             Background = Brushes.Transparent,
+            Cursor = new Cursor(StandardCursorType.Hand),
             Children =
             {
                 CountBadge(group.Count).Dock(Dock.Right),
                 actions.Dock(Dock.Right),
+                new Icon(group.IsExpanded ? Icons.ChevronDown : Icons.ChevronRight, 14)
+                {
+                    Foreground = Palette.TextSecondary,
+                    Margin = new Thickness(0, 0, Spacing.XS, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                }.Dock(Dock.Left),
                 new TextBlock
                 {
                     Classes = { "section-title" },
@@ -225,6 +261,8 @@ public sealed class SourceControlView : DockPanel
                 },
             },
         };
+        ToolTip.SetTip(header, group.IsExpanded ? "Collapse" : "Expand");
+        return header;
     }
 
     private Control CreateFileRow(SourceControlFileRow row)

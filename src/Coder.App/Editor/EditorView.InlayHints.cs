@@ -27,7 +27,7 @@ public sealed partial class EditorView
     }
 
     /// <summary>A line's hints (and the inline suggestion on the caret's line) as insertions at display indexes (tabs expanded).</summary>
-    private IReadOnlyList<LineInsertion> InsertionsOf(int line)
+    private IReadOnlyList<LineInsertion> HintInsertionsOf(int line)
     {
         var hints = _inlayHints(line);
         var isSuggestionLine = _suggestionLine == line;

@@ -123,7 +123,15 @@ public sealed class EditorApi : IEditorApi, IDisposable
                 var environment = p.TryGetProperty("env", out var env) && env.ValueKind == JsonValueKind.Object
                     ? env.EnumerateObject().Where(v => v.Value.ValueKind == JsonValueKind.String).ToDictionary(v => v.Name, v => v.Value.GetString()!)
                     : [];
-                _workbench.OpenTerminal(new TerminalRequest(String(p, "name") ?? extension.DisplayName, String(p, "command"), String(p, "cwd"), environment));
+                var view = String(p, "view");
+                if (view is not null && extension.Views.All(v => v.Id != view))
+                {
+                    throw new ArgumentException($"{view} isn't one of {extension.DisplayName}'s views (coder.views).");
+                }
+
+                _workbench.OpenTerminal(
+                    new TerminalRequest(String(p, "name") ?? extension.DisplayName, String(p, "command"), String(p, "cwd"), environment) { View = view, Message = String(p, "message") },
+                    replace: p.TryGetProperty("replace", out var replace) && replace.ValueKind == JsonValueKind.True);
                 return new JsonObject();
 
             case "window/showMessage":

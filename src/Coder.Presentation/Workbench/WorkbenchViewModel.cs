@@ -94,6 +94,7 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
         _extensionStore = extensionStore ?? new Coder.Core.Extensions.ExtensionStore(Path.Combine(Path.GetTempPath(), "coder-extensions-none"), SharedHttp.Value);
         _extensionSources = extensionSources ?? [];
         Extensions = new Coder.Presentation.Extensions.ExtensionsViewModel(_extensionStore, _extensionSources, ShowThemePickerAsync);
+        Extensions.DetailsRequested += (_, item) => ShowExtensionDetails(item);
         Editors = new EditorGroupViewModel(fileSystem, dialogs);
         StatusBar = new StatusBarViewModel(Editors);
         Find = new FindViewModel(Editors);
@@ -207,6 +208,10 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
             {
                 Sync?.NotifyLocalChange();
             }
+            else if (e.PropertyName == nameof(Coder.Presentation.Agent.InlineSuggestionsViewModel.Error) && InlineSuggestions.Error is { } error)
+            {
+                StatusBar.Message = $"Inline suggestions: {error}"; // not only in the indicator's tooltip
+            }
         };
         SourceControl.Blame.PropertyChanged += (_, e) =>
         {
@@ -274,7 +279,14 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
 
         var trust = new Coder.Core.Extensions.ExtensionTrust(Path.Combine(_extensionStore.Folder, ".trust.json"));
         ExtensionHost = new Coder.Presentation.Extensions.ExtensionHost(_extensionStore, trust, _dialogs, Commands,
-            new Coder.Presentation.Extensions.EditorApi(this, _fileSystem), launcher, message => StatusBar.Message = message);
+            new Coder.Presentation.Extensions.EditorApi(this, _fileSystem), launcher, message => StatusBar.Message = message, SecondaryViews);
+        SecondaryViews.CollectionChanged += (_, _) =>
+        {
+            if (ActiveSecondaryView is { } id && SecondaryViews.All(v => v.Id != id))
+            {
+                ActiveSecondaryView = null; // its extension was uninstalled
+            }
+        };
         return ExtensionHost;
     }
 
@@ -320,7 +332,13 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
         Register(CommandIds.PickInlineSuggestionsModel, "Coder Agent", "Select Inline Suggestions Model…", null, PickInlineSuggestionsModelAsync);
 
         // Keys, providers and the agent's model decide where suggestions come from.
-        void Watch(Coder.Presentation.Agent.AgentProviderViewModel provider) => provider.PropertyChanged += (_, _) => InlineSuggestions.RefreshStatus();
+        void Refresh()
+        {
+            InlineSuggestions.HasProviderKey = Agent.Providers.Any(p => p.HasKey);
+            InlineSuggestions.RefreshStatus();
+        }
+
+        void Watch(Coder.Presentation.Agent.AgentProviderViewModel provider) => provider.PropertyChanged += (_, _) => Refresh();
         foreach (var provider in Agent.Providers)
         {
             Watch(provider);
@@ -333,16 +351,16 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
                 Watch(provider);
             }
 
-            InlineSuggestions.RefreshStatus();
+            Refresh();
         };
         Agent.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(Agent.Model) or nameof(Agent.ProviderId))
             {
-                InlineSuggestions.RefreshStatus();
+                Refresh();
             }
         };
-        InlineSuggestions.RefreshStatus();
+        Refresh();
         OnPropertyChanged(nameof(Agent));
         return Agent;
     }
@@ -406,6 +424,7 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
     public void ShowAgent()
     {
         IsSecondarySideBarVisible = true;
+        ActiveSecondaryView = null; // the Coder Agent tab
         Agent?.Focus();
     }
 
@@ -853,11 +872,49 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
     /// <summary>Asks the terminal panel for a named terminal running a command, with extra environment variables (extensions).</summary>
     public event EventHandler<TerminalRequest>? TerminalRequested;
 
-    /// <summary>Opens a new terminal in the default shell, named, with the request's variables, and types its command into it.</summary>
-    public void OpenTerminal(TerminalRequest request)
+    /// <summary>
+    /// Opens a new terminal in the default shell, named, with the request's variables, and types its command
+    /// into it: in the terminal panel, or in an extension's side-bar view (<see cref="TerminalRequest.View"/>).
+    /// A request for a view that already runs a terminal only shows it, unless <paramref name="replace"/>.
+    /// </summary>
+    public void OpenTerminal(TerminalRequest request, bool replace = false)
     {
+        if (request.View is { } id && SecondaryViews.FirstOrDefault(v => v.Id == id) is { } view)
+        {
+            ShowSecondaryView(id);
+            if (view.HasTerminal && !replace)
+            {
+                view.Focus();
+            }
+            else
+            {
+                view.Request(request);
+            }
+
+            return;
+        }
+
         IsTerminalVisible = true;
         TerminalRequested?.Invoke(this, request);
+    }
+
+    /// <summary>Views extensions add to the secondary side bar, as tabs beside Coder Agent.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<ExtensionSideBarView> SecondaryViews { get; } = [];
+
+    private string? _activeSecondaryView;
+
+    /// <summary>The secondary side bar's tab: a <see cref="ExtensionSideBarView.Id"/>, or null for Coder Agent.</summary>
+    public string? ActiveSecondaryView
+    {
+        get => _activeSecondaryView;
+        set => SetProperty(ref _activeSecondaryView, value is not null && SecondaryViews.All(v => v.Id != value) ? null : value);
+    }
+
+    /// <summary>Opens the secondary side bar on a view (null: Coder Agent).</summary>
+    public void ShowSecondaryView(string? id)
+    {
+        IsSecondarySideBarVisible = true;
+        ActiveSecondaryView = id;
     }
 
     /// <summary>Asks the terminal panel to open find in the active terminal.</summary>
@@ -1470,8 +1527,15 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
         Register(CommandIds.PreviousReference, "Go", "Previous Reference", "Shift+F4", () => References.StepAsync(-1));
         Register(CommandIds.ToggleInlineSuggestions, "Coder Agent", "Toggle Inline Suggestions", null, () =>
         {
+            // On but without a model: the indicator's click picks one instead of turning suggestions off.
+            if (InlineSuggestions.IsEnabled && InlineSuggestions.Status == Coder.Presentation.Agent.InlineSuggestionStatus.NoModel && Agent is not null)
+            {
+                return PickInlineSuggestionsModelAsync();
+            }
+
             InlineSuggestions.Toggle();
             StatusBar.Message = InlineSuggestions.IsEnabled ? "Inline suggestions on" : "Inline suggestions off";
+            return Task.CompletedTask;
         });
         Register(CommandIds.TriggerInlineSuggestion, "Coder Agent", "Trigger Inline Suggestion", null,InlineSuggestions.TriggerAsync);
         Register(CommandIds.ToggleInlayHints, "View", "Toggle Inlay Hints", null, () =>
@@ -1487,6 +1551,8 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
         Register(CommandIds.RenameSymbol, "Edit", "Rename Symbol", "F2", LanguageCommands.Rename);
         Register(CommandIds.QuickFix, "Edit", "Quick Fix…", "Ctrl+OemPeriod", LanguageCommands.QuickFixAsync);
         Register(CommandIds.FormatDocument, "Edit", "Format Document", "Shift+Alt+F", LanguageCommands.FormatDocumentAsync);
+        Register(CommandIds.OpenPreview, "View", "Open Preview (Markdown, SVG)", "Ctrl+Shift+V", OpenPreviewAsync);
+        Register(CommandIds.OpenPreviewSource, "View", "Open Preview Source", null, OpenPreviewSourceAsync);
         Register(CommandIds.RestartLanguageServers, "Languages", "Restart Language Servers", null, Languages.RestartAsync);
     }
 

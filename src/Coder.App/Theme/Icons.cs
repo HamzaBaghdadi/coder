@@ -12,6 +12,9 @@ public static class Icons
     public static readonly Geometry ChevronRight = Geometry.Parse("M9 6l6 6l-6 6");
     public static readonly Geometry ChevronDown = Geometry.Parse("M6 9l6 6l6 -6");
     public static readonly Geometry ChevronUp = Geometry.Parse("M6 15l6 -6l6 6");
+    // An eye (preview), after Lucide's "eye", and angle brackets (source), after Lucide's "code"; ISC license.
+    public static readonly Geometry Preview = Geometry.Parse("M2 12s3.5-7 10-7s10 7 10 7s-3.5 7-10 7S2 12 2 12Z M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6Z");
+    public static readonly Geometry Code = Geometry.Parse("M16 18l6-6l-6-6 M8 6l-6 6l6 6");
     public static readonly Geometry Commit = Geometry.Parse("M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6Z M3 12h6 M15 12h6");
     public static readonly Geometry Close = Geometry.Parse("M7 7l10 10 M17 7L7 17");
     public static readonly Geometry File = Geometry.Parse("M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z M14 3v5h5");

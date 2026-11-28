@@ -66,9 +66,13 @@ public sealed class ExtensionHost : IAsyncDisposable
     private bool _started;
     private bool _disposed;
 
+    private readonly IList<Workbench.ExtensionSideBarView> _views;
+
+    /// <param name="views">Where extensions' side-bar views go (the workbench's secondary side bar tabs).</param>
     public ExtensionHost(ExtensionStore store, ExtensionTrust trust, IDialogService dialogs, CommandRegistry commands, IEditorApi api,
-        IExtensionLauncher? launcher = null, Action<string>? showMessage = null)
+        IExtensionLauncher? launcher = null, Action<string>? showMessage = null, IList<Workbench.ExtensionSideBarView>? views = null)
     {
+        _views = views ?? [];
         _store = store;
         _trust = trust;
         _dialogs = dialogs;
@@ -110,7 +114,13 @@ public sealed class ExtensionHost : IAsyncDisposable
         foreach (var id in _registeredCommands.Keys.Where(id => !installed.ContainsKey(id)).ToList())
         {
             UnregisterCommands(id);
+            RemoveViews(id);
             _trust.Forget(id); // uninstalled: a reinstall asks again
+        }
+
+        foreach (var extension in installed.Values)
+        {
+            RemoveViews(extension.Id, extension.Views.Select(v => v.Id).ToList()); // views an update dropped
         }
 
         foreach (var id in _running.Keys.Where(id => !installed.TryGetValue(id, out var now) || now.Folder != _running[id].Extension.Folder).ToList())
@@ -142,6 +152,12 @@ public sealed class ExtensionHost : IAsyncDisposable
 
     private void RegisterCommands(InstalledExtension extension)
     {
+        foreach (var view in extension.Views.Where(v => _views.All(existing => existing.Id != v.Id)))
+        {
+            _views.Add(new Workbench.ExtensionSideBarView(view.Id, view.Title, extension.Id,
+                () => view.Command is { } command ? RunCommandAsync(extension.Id, command) : Task.CompletedTask));
+        }
+
         var ids = new List<string>();
         foreach (var command in extension.Commands.Where(c => !_commands.Contains(c.Id)))
         {
@@ -150,6 +166,15 @@ public sealed class ExtensionHost : IAsyncDisposable
         }
 
         _registeredCommands[extension.Id] = ids;
+    }
+
+    /// <summary>Removes an extension's side-bar views, except those its (updated) manifest still declares, which keep their terminal.</summary>
+    private void RemoveViews(string id, IReadOnlyCollection<string>? keep = null)
+    {
+        foreach (var view in _views.Where(v => string.Equals(v.ExtensionId, id, StringComparison.OrdinalIgnoreCase) && keep?.Contains(v.Id) != true).ToList())
+        {
+            _views.Remove(view);
+        }
     }
 
     private void UnregisterCommands(string id)

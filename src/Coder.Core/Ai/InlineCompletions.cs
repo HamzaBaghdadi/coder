@@ -30,8 +30,8 @@ public static class InlineCompletionPrompt
     /// <summary>Text after the caret that is sent at most.</summary>
     public const int MaxSuffixChars = 2_000;
 
-    /// <summary>The longest answer asked for: a dozen lines or so.</summary>
-    public const int MaxTokens = 256;
+    /// <summary>The longest answer asked for: a dozen lines or so, with room for a model that thinks briefly first.</summary>
+    public const int MaxTokens = 512;
 
     public const string SystemPrompt =
         "You are a code completion engine inside a code editor, like GitHub Copilot. You get one file with the marker "
@@ -213,7 +213,19 @@ public static class InlineCompletionText
         }
 
         var trimmed = text.TrimStart(' ', '\t');
-        return typed.Length > 0 && trimmed.StartsWith(typed, StringComparison.Ordinal) ? trimmed[typed.Length..] : text;
+        if (typed.Length > 0 && trimmed.StartsWith(typed, StringComparison.Ordinal))
+        {
+            return trimmed[typed.Length..];
+        }
+
+        // The word being typed repeated whole ("<li>Ap" → "Apples</li>"): keep the rest of the word.
+        var word = 0;
+        while (word < line.Length && (char.IsLetterOrDigit(line[^(word + 1)]) || line[^(word + 1)] == '_'))
+        {
+            word++;
+        }
+
+        return word >= 2 && text.StartsWith(line[^word..], StringComparison.Ordinal) ? text[word..] : text;
     }
 
     /// <summary>
@@ -287,6 +299,8 @@ public sealed class InlineCompletionEngine
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(Timeout);
         var reply = new StringBuilder();
+        var reasoned = false;
+        string? finish = null;
         try
         {
             await foreach (var item in provider.StreamAsync(InlineCompletionPrompt.Build(model, context), timeout.Token).ConfigureAwait(false))
@@ -299,8 +313,13 @@ public sealed class InlineCompletionEngine
                         break; // more than will be shown (fences and echoes included)
                     }
                 }
-                else if (item is ChatCompleted)
+                else if (item is ReasoningDelta)
                 {
+                    reasoned = true;
+                }
+                else if (item is ChatCompleted completed)
+                {
+                    finish = completed.Reason;
                     break;
                 }
             }
@@ -310,7 +329,20 @@ public sealed class InlineCompletionEngine
             throw new AiProviderException($"{provider.Config.Name} took longer than {Timeout.TotalSeconds:0} s to suggest a completion.");
         }
 
-        return InlineCompletionText.Clean(reply.ToString(), context);
+        // A thinking model can use the whole (short) answer on its reasoning and say nothing: that is not
+        // "nothing to suggest", and the user needs to know to pick another model.
+        var text = reply.ToString();
+        if (text.Trim().Length == 0 && (reasoned || finish == "length" || text.Contains("<think>", StringComparison.Ordinal)))
+        {
+            throw new AiProviderException($"{model} spent its answer thinking and suggested nothing. Pick a model that answers directly (not a reasoning model) for inline suggestions.");
+        }
+
+        if (text.Contains("<think>", StringComparison.Ordinal) && !text.Contains("</think>", StringComparison.Ordinal))
+        {
+            throw new AiProviderException($"{model} was still thinking when its answer ran out. Pick a model that answers directly (not a reasoning model) for inline suggestions.");
+        }
+
+        return InlineCompletionText.Clean(text, context);
     }
 
     private static int CountLines(StringBuilder text)

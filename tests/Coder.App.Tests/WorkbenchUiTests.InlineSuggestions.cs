@@ -218,14 +218,87 @@ public sealed partial class WorkbenchUiTests
         Assert.Equal(InlineSuggestionStatus.Ready, workbench.InlineSuggestions.Status);
     }
 
-    private static (MainWindow Window, WorkbenchViewModel Workbench) CreateInlineWindow(InlineFakeProvider provider, bool withKey = true)
+    /// <summary>
+    /// A provider with a key but no model chosen: the indicator says "No model" (instead of hiding, so it
+    /// is clear why nothing appears) and clicking it opens the model picker; picking a model makes it ready.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Inline_suggestions_ask_for_a_model_when_none_is_chosen()
+    {
+        var (window, workbench) = CreateInlineWindow(new InlineFakeProvider(), model: string.Empty);
+        window.Show();
+        workbench.Editors.NewUntitled();
+        Dispatcher.UIThread.RunJobs();
+        var suggestions = workbench.InlineSuggestions;
+
+        Assert.Equal(InlineSuggestionStatus.NoModel, suggestions.Status);
+        Assert.True(suggestions.IsAvailable);
+        var indicator = window.GetVisualDescendants().OfType<Controls.FlatButton>().Single(b => Avalonia.Automation.AutomationProperties.GetName(b) == "Inline Suggestions");
+        Assert.True(indicator.IsEffectivelyVisible);
+        Assert.Contains(indicator.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "No model");
+
+        indicator.Command!.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(suggestions.IsEnabled); // not turned off
+        await WaitUntil(() => workbench.Palette.Placeholder.Contains("inline suggestions", StringComparison.OrdinalIgnoreCase), () => workbench.Palette.Placeholder);
+        workbench.Palette.Close();
+
+        workbench.Agent!.SelectModel("test", "small-model");
+        Assert.Equal(InlineSuggestionStatus.Ready, suggestions.Status);
+        Assert.Equal("small-model · Test AI", suggestions.ModelLabel);
+    }
+
+    /// <summary>In HTML the caret is usually before an auto-closed tag: suggestions still come, without repeating the word or the tag.</summary>
+    [AvaloniaFact]
+    public async Task Inline_suggestion_fills_text_between_html_tags()
+    {
+        var provider = new InlineFakeProvider((_, _) => InlineFakeProvider.Reply("Apples</li>"));
+        var folder = Directory.CreateTempSubdirectory("coder-inline-html-").FullName;
+        var file = Path.Combine(folder, "index.html");
+        await File.WriteAllTextAsync(file, "<ul>\n  <li></li>\n</ul>\n", TestContext.Current.CancellationToken);
+        var (window, workbench) = CreateInlineWindow(provider);
+        try
+        {
+            workbench.OpenFolder(folder);
+            window.Show();
+            await workbench.OpenFileAsync(file);
+            var tab = workbench.Editors.ActiveEditor!;
+            var editor = window.GetVisualDescendants().OfType<Editor.CodeEditor>().First();
+            workbench.InlineSuggestions.Delay = TimeSpan.FromMilliseconds(50);
+            editor.FocusText();
+            tab.Editor.SetCaret(tab.Document.GetLineStart(1) + "  <li>".Length);
+            Dispatcher.UIThread.RunJobs();
+
+            foreach (var c in "Ap")
+            {
+                window.KeyTextInput(c.ToString());
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            await WaitUntil(() => { workbench.Completion.Close(); return editor.ShownInlineSuggestion is not null; }, () => $"status {workbench.InlineSuggestions.Status}, {provider.Requests.Count} requests");
+            Assert.Equal("ples", editor.ShownInlineSuggestion);
+            Assert.Contains("<li>Ap<CURSOR></li>", provider.Requests[0].Messages[^1].Text, StringComparison.Ordinal);
+
+            window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("  <li>Apples</li>", tab.Document.GetLineText(1));
+            workbench.InlineSuggestions.IsEnabled = false;
+        }
+        finally
+        {
+            await workbench.Editors.CloseAllAsync();
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    private static (MainWindow Window, WorkbenchViewModel Workbench) CreateInlineWindow(InlineFakeProvider provider, bool withKey = true, string model = "test-model")
     {
         var settings = new MemorySettingsStore();
         settings.Save(new UserSettings
         {
             AgentProviders = [new AgentProviderSetting { Id = "test", Kind = "openai", Name = "Test AI", BaseUrl = "http://fake/v1" }],
             AgentProvider = "test",
-            AgentModel = "test-model",
+            AgentModel = model,
         });
         var keys = new MemoryApiKeyStore();
         if (withKey)

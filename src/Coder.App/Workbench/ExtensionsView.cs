@@ -3,6 +3,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using Coder.App.Controls;
 using Coder.App.Mvvm;
 using Coder.App.Services;
@@ -213,12 +214,35 @@ public sealed class ExtensionsView : DockPanel
         };
         row.PointerEntered += (_, _) => row.Background = Palette.Hover;
         row.PointerExited += (_, _) => row.Background = Brushes.Transparent;
+
+        // Clicking the row (not one of its buttons), or Enter on it, opens the extension's page with its README.
+        row.Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand);
+        row.Focusable = true;
+        row.Tapped += (_, e) =>
+        {
+            if ((e.Source as Visual)?.FindAncestorOfType<FlatButton>(includeSelf: true) is null)
+            {
+                item.ShowDetails.Execute(null);
+            }
+        };
+        row.KeyDown += (_, e) =>
+        {
+            if (e.Key == Avalonia.Input.Key.Enter && e.Source == row)
+            {
+                item.ShowDetails.Execute(null);
+                e.Handled = true;
+            }
+        };
+        row.GotFocus += (_, _) => row.BorderBrush = Palette.Accent;
+        row.LostFocus += (_, _) => row.BorderBrush = Brushes.Transparent;
+        row.BorderThickness = new Thickness(1);
+        row.BorderBrush = Brushes.Transparent;
         AutomationProperties.SetName(row, item.DisplayName);
-        ToolTip.SetTip(row, item.Id);
+        ToolTip.SetTip(row, $"{item.Id} · click for details");
         return row;
     }
 
-    private static FlatButton Action(string text, string name, System.Windows.Input.ICommand command, bool primary)
+    internal static FlatButton Action(string text, string name, System.Windows.Input.ICommand command, bool primary)
     {
         var button = new FlatButton
         {
@@ -234,7 +258,7 @@ public sealed class ExtensionsView : DockPanel
         return button;
     }
 
-    private static async Task LoadIconAsync(Border frame, string address)
+    internal static async Task LoadIconAsync(Border frame, string address)
     {
         if (await ExtensionIcons.LoadAsync(address) is { } bitmap)
         {

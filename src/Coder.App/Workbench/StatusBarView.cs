@@ -185,6 +185,7 @@ public sealed class StatusBarView : Border
                         {
                             Presentation.Agent.InlineSuggestionStatus.Loading => "…",
                             Presentation.Agent.InlineSuggestionStatus.Off => "Off",
+                            Presentation.Agent.InlineSuggestionStatus.NoModel => "No model",
                             _ => string.Empty,
                         }),
                 },

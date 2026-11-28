@@ -220,6 +220,7 @@ public sealed partial class EditorView : Control, ILogicalScrollable
         _highlighter = highlighter;
         _layouts.Clear();
         _widestLine = 0;
+        ColorsAttached();
         InvalidateMinimap();
         ClearCtrlLink();
         _scopesVersion = -1;
@@ -368,6 +369,7 @@ public sealed partial class EditorView : Control, ILogicalScrollable
         InvalidateMinimap();
         ClearCtrlLink();
         _layouts.InvalidateFrom(change.StartLine);
+        InvalidateColorsFrom(change.StartLine);
         ScheduleScopes();
         if (change.ChangesLineCount)
         {
@@ -380,6 +382,7 @@ public sealed partial class EditorView : Control, ILogicalScrollable
     private void OnHighlightingInvalidated(object? sender, int line)
     {
         _layouts.InvalidateFrom(line);
+        InvalidateColorsFrom(line);
         InvalidateMinimap();
     }
 

@@ -46,6 +46,7 @@ public sealed partial class EditorView
             DrawIndentGuides(context, firstLine, lastLine, textLeft);
             DrawBracketMatch(context);
             DrawText(context, firstLine, lastLine);
+            DrawColorSwatches(context, firstLine, lastLine);
             DrawCtrlLink(context);
             DrawDiagnostics(context, firstLine, lastLine);
             DrawBlame(context);

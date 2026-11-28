@@ -37,6 +37,7 @@ public sealed class EditorArea : Panel
         _editor.SetBlame(workbench.SourceControl.Blame);
         _editor.SetInlineSuggestions(workbench.InlineSuggestions);
         _editor.SetDefinitionSupport(tab => workbench.Languages.Supports(tab, c => c.HasDefinition));
+        _editor.View.RegisterColorPicker(workbench.Commands);
 
         var images = new ImageViewer()
             .Bind(IsVisibleProperty, editors, x => x.ActiveTab, tab => tab is ImageTabViewModel);
@@ -45,11 +46,17 @@ public sealed class EditorArea : Panel
         _settings = settings;
         _diff = new DiffEditor(workbench.OpenFileAsync)
             .Bind(DiffEditor.IsVisibleProperty, editors, x => x.ActiveTab, tab => tab is DiffTabViewModel);
+        var preview = new PreviewView(workbench.OpenFileAsync)
+            .Bind(IsVisibleProperty, editors, x => x.ActiveTab, tab => tab is PreviewTabViewModel);
+        var extension = new ExtensionDetailsView(workbench.OpenFileAsync)
+            .Bind(IsVisibleProperty, editors, x => x.ActiveTab, tab => tab is Presentation.Extensions.ExtensionDetailsTabViewModel);
         editors.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(EditorGroupViewModel.ActiveTab))
             {
                 _diff.Diff = editors.ActiveTab as DiffTabViewModel;
+                preview.Tab = editors.ActiveTab as PreviewTabViewModel;
+                extension.Tab = editors.ActiveTab as Presentation.Extensions.ExtensionDetailsTabViewModel;
                 if (editors.ActiveTab is Presentation.Settings.SettingsPageViewModel page)
                 {
                     settings.Page = page;
@@ -63,7 +70,7 @@ public sealed class EditorArea : Panel
             Children =
             {
                 new EditorTabStrip(editors).Dock(Dock.Top),
-                Breadcrumbs(editors).Bind(IsVisibleProperty, editors, x => x.ActiveTab, tab => tab is not Presentation.Settings.SettingsPageViewModel).Dock(Dock.Top),
+                Breadcrumbs(workbench).Bind(IsVisibleProperty, editors, x => x.ActiveTab, tab => tab is not Presentation.Settings.SettingsPageViewModel).Dock(Dock.Top),
                 new Panel
                 {
                     Children =
@@ -73,6 +80,8 @@ public sealed class EditorArea : Panel
                         _diff,
                         images,
                         settings,
+                        preview,
+                        extension,
                     },
                 },
             },
@@ -122,7 +131,41 @@ public sealed class EditorArea : Panel
         }
     }
 
-    private static Control Breadcrumbs(EditorGroupViewModel editors)
+    /// <summary>
+    /// The path of the shown file, with the view switch on the right: "Open Preview" on a Markdown or SVG file,
+    /// "Open Source" on its preview (like VS Code's editor title buttons).
+    /// </summary>
+    private static Control Breadcrumbs(WorkbenchViewModel workbench)
+    {
+        var editors = workbench.Editors;
+        var openPreview = new FlatButton(Icons.Preview, "Open Preview (Ctrl+Shift+V)", 14)
+        {
+            Width = 22,
+            Height = 20,
+            Command = workbench.Commands.ToCommand(Presentation.Commands.CommandIds.OpenPreview),
+        }.Bind(IsVisibleProperty, editors, x => x.ActiveTab, tab => tab is EditorTabViewModel { FilePath: { } path } && PreviewTabViewModel.KindOf(path) is not null);
+        var openSource = new FlatButton(Icons.Code, "Open Source", 14)
+        {
+            Width = 22,
+            Height = 20,
+            Command = workbench.Commands.ToCommand(Presentation.Commands.CommandIds.OpenPreviewSource),
+        }.Bind(IsVisibleProperty, editors, x => x.ActiveTab, tab => tab is PreviewTabViewModel);
+        var bar = (Border)PathBar(editors);
+        var path = bar.Child!;
+        bar.Child = null; // re-parented below
+        bar.Padding = new Thickness(Spacing.M + Spacing.XXS, 0, Spacing.XS, 0);
+        bar.Child = new DockPanel
+        {
+            Children =
+            {
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = Spacing.XXS, Children = { openPreview, openSource } }.Dock(Dock.Right),
+                path,
+            },
+        };
+        return bar;
+    }
+
+    private static Control PathBar(EditorGroupViewModel editors)
     {
         var text = new TextBlock
         {

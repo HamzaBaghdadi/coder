@@ -27,6 +27,10 @@ In Coder's registry, entries with a program must be verified.
 
 - `coder.program` maps a .NET runtime id (`win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`,
   `osx-x64`, `osx-arm64`) to the program's path inside the package. VS Code ignores this section.
+- `coder.views` adds tabs to the secondary side bar, beside Coder Agent:
+  `[{ "id": "claude-code.view", "title": "Claude Code", "location": "secondarySidebar", "command": "claude-code.open" }]`.
+  A view shows a terminal the program opens in it (`terminal/create` with `view`). Showing the tab
+  before that runs the view's `command`; so does pressing Enter after its shell exits.
 - `contributes.commands` and `contributes.keybindings` are VS Code's. The commands show in the command
   palette from the moment the extension is installed. Running one starts the program if needed and
   sends it `commands/execute`.
@@ -74,6 +78,6 @@ lines and UTF-16 columns (as in LSP). Errors come back as JSON-RPC errors with a
 | `diff/close` | `{title}` | `{closed}`: closes this program's review diffs with that title (rejecting them). |
 | `diff/closeAll` | none | `{closed}`: closes all of this extension's review diffs. |
 | `diagnostics/get` | `{path?}` | `{files: [{path, diagnostics: [{range, severity, message, source, code}]}]}`. `severity` is `error`, `warning`, `information` or `hint`. |
-| `terminal/create` | `{name, command?, cwd?, env?}` | `{}`. Opens a terminal named `name` in the default shell, with `env` added, and types `command` into it. |
+| `terminal/create` | `{name, command?, cwd?, env?, view?, message?, replace?}` | `{}`. Opens a terminal named `name` in the default shell, with `env` added, and types `command` into it: in the terminal panel, or in one of the extension's own side-bar views (`view`), which it then shows. A view that already runs a terminal is only shown, unless `replace` is true. `message` is printed on the terminal's screen first. |
 | `window/showMessage` | `{text}` | `{}`. Shown in the status bar. |
 | `window/log` | `{text}` | notification; ignored for now. |
