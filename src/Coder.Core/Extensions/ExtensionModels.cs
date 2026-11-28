@@ -37,6 +37,14 @@ public sealed record ExtensionCommand(string Id, string Category, string Title, 
 /// </summary>
 public sealed record ExtensionView(string Id, string Title, string? Command);
 
+/// <summary>
+/// A coding agent an extension brings to Coder Agent (<c>coder.agents</c>): a program speaking the Agent Client
+/// Protocol on stdio. It runs the extension's program (<c>coder.program</c>) with <see cref="Arguments"/>, or
+/// its own (<c>program</c>, per platform), inside the extension's folder.
+/// </summary>
+/// <param name="Program">The program for this machine, or null when there is none for this platform.</param>
+public sealed record ExtensionAgent(string Id, string Name, string? Program, IReadOnlyList<string> Arguments);
+
 /// <summary>An extension in Coder's extensions folder.</summary>
 /// <param name="Themes">The color themes it contributes (their labels).</param>
 public sealed record InstalledExtension(string Id, string DisplayName, string Publisher, string Description, string Version, string Folder, IReadOnlyList<string> Themes)
@@ -61,6 +69,9 @@ public sealed record InstalledExtension(string Id, string DisplayName, string Pu
 
     /// <summary>The views it adds to the secondary side bar (<c>coder.views</c>).</summary>
     public IReadOnlyList<ExtensionView> Views { get; init; } = [];
+
+    /// <summary>The coding agents it brings to Coder Agent (<c>coder.agents</c>).</summary>
+    public IReadOnlyList<ExtensionAgent> Agents { get; init; } = [];
 
     /// <summary>The SHA-256 of the package it was installed from, when Coder recorded it; consent to run its program is tied to it.</summary>
     public string? PackageSha256 { get; init; }

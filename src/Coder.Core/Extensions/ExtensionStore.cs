@@ -309,6 +309,22 @@ public sealed class ExtensionStore(string folder, HttpClient http)
                            && coder.TryGetProperty("program", out var program) && program.ValueKind == JsonValueKind.Object
                 ? program.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String).ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.OrdinalIgnoreCase)
                 : [];
+            var ownProgram = programs.TryGetValue(Platform.RuntimeId, out var ownRelative) ? Inside(directory, ownRelative) : null;
+            var agents = root.TryGetProperty("coder", out var agentSection) && agentSection.ValueKind == JsonValueKind.Object
+                         && agentSection.TryGetProperty("agents", out var agentList) && agentList.ValueKind == JsonValueKind.Array
+                ? agentList.EnumerateArray()
+                    .Where(a => String(a, "id") is { Length: > 0 } && String(a, "name") is { Length: > 0 })
+                    .Select(a => new ExtensionAgent(
+                        String(a, "id")!,
+                        String(a, "name")!,
+                        a.TryGetProperty("program", out var agentProgram) && agentProgram.ValueKind == JsonValueKind.Object
+                            ? agentProgram.TryGetProperty(Platform.RuntimeId, out var path) && path.ValueKind == JsonValueKind.String ? Inside(directory, path.GetString()!) : null
+                            : ownProgram,
+                        a.TryGetProperty("args", out var args) && args.ValueKind == JsonValueKind.Array
+                            ? [.. args.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!)]
+                            : []))
+                    .ToList()
+                : [];
             return new InstalledExtension(
                 $"{publisher}.{name}",
                 display is null || display.StartsWith('%') ? name : display,
@@ -324,6 +340,7 @@ public sealed class ExtensionStore(string folder, HttpClient http)
                 ProgramPath = programs.TryGetValue(Platform.RuntimeId, out var relative) ? Inside(directory, relative) : null,
                 Commands = Commands(contributes, display is null || display.StartsWith('%') ? name : display),
                 Views = views,
+                Agents = agents,
                 Source = TextFile(directory, SourceFile),
                 PackageSha256 = TextFile(directory, Sha256File),
             };

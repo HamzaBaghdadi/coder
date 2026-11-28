@@ -46,6 +46,12 @@ public sealed partial class WorkbenchUiTests
             var host = workbench.EnableExtensionHost(launcher);
             Assert.True(workbench.Commands.Contains("helper.hello")); // in the palette before it runs
 
+            // Its agent (coder.agents) is offered to Coder Agent: the extension's program, with its arguments.
+            var declared = Assert.Single(workbench.AgentServers);
+            Assert.Equal(("helper.agent", "Helper Agent", "Acme Helper", "acme.helper"), (declared.Id, declared.Name, declared.Source, declared.ExtensionId));
+            Assert.Equal(Path.Combine(store.Folder, "acme.helper-1.0.0", "bin", "helper.exe"), declared.Program);
+            Assert.Equal(["--acp"], declared.Arguments);
+
             await host.StartAsync();
             var program = launcher.Programs.Single();
             Assert.Equal(["Allow Acme Helper to run on this computer?"], dialogs.Asked);
@@ -136,6 +142,7 @@ public sealed partial class WorkbenchUiTests
             Assert.True(program.ShutdownRequested);
             Assert.Empty(host.RunningIds);
             await WaitUntil(() => !workbench.Commands.Contains("helper.hello"));
+            await WaitUntil(() => workbench.AgentServers.Count == 0, () => "its agent is still offered");
             window.Close();
         }
         finally
@@ -276,7 +283,8 @@ public sealed partial class WorkbenchUiTests
         File.WriteAllText(Path.Combine(folder, "bin", "helper.exe"), "the fake launcher never runs this");
         File.WriteAllText(Path.Combine(folder, "package.json"), $$"""
             { "publisher": "acme", "name": "helper", "version": "1.0.0", "displayName": "Acme Helper",
-              "coder": { "program": { "{{Platform.RuntimeId}}": "bin/helper.exe" }, "views": [ { "id": "helper.view", "title": "Helper View", "location": "secondarySidebar", "command": "helper.showView" } ] },
+              "coder": { "program": { "{{Platform.RuntimeId}}": "bin/helper.exe" }, "views": [ { "id": "helper.view", "title": "Helper View", "location": "secondarySidebar", "command": "helper.showView" } ],
+                         "agents": [ { "id": "helper.agent", "name": "Helper Agent", "args": ["--acp"] } ] },
               "contributes": { "commands": [ { "command": "helper.hello", "title": "Say Hello", "category": "Helper" }, { "command": "helper.showView", "title": "Show View", "category": "Helper" } ] } }
             """);
     }

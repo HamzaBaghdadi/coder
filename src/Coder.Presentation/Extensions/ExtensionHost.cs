@@ -67,12 +67,16 @@ public sealed class ExtensionHost : IAsyncDisposable
     private bool _disposed;
 
     private readonly IList<Workbench.ExtensionSideBarView> _views;
+    private readonly IList<Agent.AgentServer> _agents;
 
     /// <param name="views">Where extensions' side-bar views go (the workbench's secondary side bar tabs).</param>
+    /// <param name="agents">Where extensions' coding agents go (Coder Agent's picker).</param>
     public ExtensionHost(ExtensionStore store, ExtensionTrust trust, IDialogService dialogs, CommandRegistry commands, IEditorApi api,
-        IExtensionLauncher? launcher = null, Action<string>? showMessage = null, IList<Workbench.ExtensionSideBarView>? views = null)
+        IExtensionLauncher? launcher = null, Action<string>? showMessage = null, IList<Workbench.ExtensionSideBarView>? views = null,
+        IList<Agent.AgentServer>? agents = null)
     {
         _views = views ?? [];
+        _agents = agents ?? [];
         _store = store;
         _trust = trust;
         _dialogs = dialogs;
@@ -128,6 +132,14 @@ public sealed class ExtensionHost : IAsyncDisposable
             await StopAsync(id); // uninstalled, or updated to a new folder
         }
 
+        foreach (var id in _agents.Select(a => a.ExtensionId).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList())
+        {
+            if (!installed.TryGetValue(id, out var now) || now.Agents.Count == 0 || _agents.Any(a => a.ExtensionId == id && now.Agents.All(n => n.Id != a.Id || n.Program != a.Program)))
+            {
+                RemoveAgents(id); // uninstalled, or its agents changed (RegisterCommands adds the new ones)
+            }
+        }
+
         foreach (var extension in installed.Values)
         {
             UnregisterCommands(extension.Id);
@@ -158,6 +170,16 @@ public sealed class ExtensionHost : IAsyncDisposable
                 () => view.Command is { } command ? RunCommandAsync(extension.Id, command) : Task.CompletedTask));
         }
 
+        // Its agents, for this platform; starting one asks the same consent as its program.
+        foreach (var agent in extension.Agents.Where(a => a.Program is not null && _agents.All(existing => existing.Id != a.Id)))
+        {
+            _agents.Add(new Agent.AgentServer(agent.Id, agent.Name, agent.Program!, agent.Arguments, extension.DisplayName)
+            {
+                ExtensionId = extension.Id,
+                AllowAsync = () => IsAllowedAsync(extension, askAgain: true),
+            });
+        }
+
         var ids = new List<string>();
         foreach (var command in extension.Commands.Where(c => !_commands.Contains(c.Id)))
         {
@@ -174,6 +196,15 @@ public sealed class ExtensionHost : IAsyncDisposable
         foreach (var view in _views.Where(v => string.Equals(v.ExtensionId, id, StringComparison.OrdinalIgnoreCase) && keep?.Contains(v.Id) != true).ToList())
         {
             _views.Remove(view);
+        }
+    }
+
+    /// <summary>Removes an extension's agents (uninstalled, or updated: the update registers its agents again).</summary>
+    private void RemoveAgents(string id)
+    {
+        foreach (var agent in _agents.Where(a => string.Equals(a.ExtensionId, id, StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            _agents.Remove(agent);
         }
     }
 

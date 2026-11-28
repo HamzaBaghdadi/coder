@@ -15,6 +15,9 @@ public sealed record AgentServices(HttpClient Http, IApiKeyStore Keys, ICommandR
 {
     /// <summary>Creates provider clients; tests can swap it.</summary>
     public Func<AiProviderConfig, string?, IChatProvider>? CreateProvider { get; init; }
+
+    /// <summary>Starts a coding agent's program and connects to it (agent, working folder, host); tests can swap it.</summary>
+    public Func<AgentServer, string, Coder.Core.Acp.IAcpClientHost, Coder.Core.Acp.AcpClient>? StartAgent { get; init; }
 }
 
 /// <summary>What Coder Agent needs from the workbench.</summary>
@@ -24,7 +27,11 @@ public sealed record AgentWorkspace(
     EditorGroupViewModel Editors,
     Action<IReadOnlyList<(string Path, Coder.Core.Lsp.FileChangeType Type)>> FilesChanged,
     Func<string, Task> OpenFile,
-    CommandPaletteViewModel Palette);
+    CommandPaletteViewModel Palette)
+{
+    /// <summary>The coding agents extensions bring (kept up to date by the extension host).</summary>
+    public ObservableCollection<AgentServer> AgentServers { get; init; } = [];
+}
 
 /// <summary>
 /// Coder Agent, the chat in the secondary side bar: messages and the agent's work (tools, diffs to accept,
@@ -84,6 +91,7 @@ public sealed partial class AgentViewModel : ObservableObject
         });
         Attachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(CanSend));
         Items.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasMessages));
+        WatchAgentServers();
     }
 
     public ObservableCollection<ChatItem> Items { get; } = [];
@@ -154,7 +162,9 @@ public sealed partial class AgentViewModel : ObservableObject
     public string ProviderId => _providerId;
 
     /// <summary>The model button's text.</summary>
-    public string ModelLabel => Provider is { } provider && Model.Length > 0
+    public string ModelLabel => SelectedAgent is { } agent ? $"{agent.Name} · Agent"
+        : _providerId.StartsWith(AgentProviderPrefix, StringComparison.Ordinal) ? "Pick a model"
+        : Provider is { } provider && Model.Length > 0
         ? $"{(provider.FindModel(Model)?.DisplayName ?? Model)} · {provider.Config.Name}"
         : "Pick a model";
 
@@ -191,6 +201,7 @@ public sealed partial class AgentViewModel : ObservableObject
         Stop();
         Items.Clear();
         _conversation.Clear();
+        ResetAgentSession();
         Attachments.Clear();
         Notice = null;
         Usage = string.Empty;
@@ -205,6 +216,24 @@ public sealed partial class AgentViewModel : ObservableObject
     {
         if (!CanSend)
         {
+            return;
+        }
+
+        if (_providerId.StartsWith(AgentProviderPrefix, StringComparison.Ordinal))
+        {
+            if (SelectedAgent is not { } agent)
+            {
+                Notice = "That agent isn't installed anymore. Pick another.";
+                await ShowModelPickerAsync();
+                return;
+            }
+
+            var prompt = Input.Trim();
+            var attached = Attachments.ToList();
+            Input = string.Empty;
+            Attachments.Clear();
+            Notice = null;
+            await SendToAgentAsync(agent, prompt, attached);
             return;
         }
 
@@ -385,6 +414,9 @@ public sealed partial class AgentViewModel : ObservableObject
                 case CommandProposalItem command:
                     command.Cancel();
                     break;
+                case PermissionProposalItem permission:
+                    permission.Cancel();
+                    break;
             }
 
             if (tool.Status is ToolStatus.Running or ToolStatus.WaitingForUser)
@@ -400,7 +432,9 @@ public sealed partial class AgentViewModel : ObservableObject
     // Models ---------------------------------------------------------------------------------------
 
     /// <summary>Lists every provider's models in the palette (after fetching them), plus a way to type any model id.</summary>
-    public Task ShowModelPickerAsync() => ShowModelPickerAsync("Pick a model for Coder Agent (or type a model id)", _providerId, Model, SelectModel);
+    public Task ShowModelPickerAsync() => ShowModelPickerAsync(
+        _workspace.AgentServers.Count > 0 ? "Pick an agent or a model for Coder Agent (or type a model id)" : "Pick a model for Coder Agent (or type a model id)",
+        _providerId, Model, SelectModel, AgentRows());
 
     /// <summary>The model picker for another use (inline suggestions): its title, the current choice, what picking does and rows to add first.</summary>
     public async Task ShowModelPickerAsync(string title, string currentProvider, string currentModel, Action<string, string> select, IReadOnlyList<PaletteItem>? extraRows = null)

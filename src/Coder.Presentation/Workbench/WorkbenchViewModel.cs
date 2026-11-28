@@ -279,7 +279,7 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
 
         var trust = new Coder.Core.Extensions.ExtensionTrust(Path.Combine(_extensionStore.Folder, ".trust.json"));
         ExtensionHost = new Coder.Presentation.Extensions.ExtensionHost(_extensionStore, trust, _dialogs, Commands,
-            new Coder.Presentation.Extensions.EditorApi(this, _fileSystem, _dialogs), launcher, message => StatusBar.Message = message, SecondaryViews);
+            new Coder.Presentation.Extensions.EditorApi(this, _fileSystem, _dialogs), launcher, message => StatusBar.Message = message, SecondaryViews, AgentServers);
         SecondaryViews.CollectionChanged += (_, _) =>
         {
             if (ActiveSecondaryView is { } id && SecondaryViews.All(v => v.Id != id))
@@ -303,7 +303,10 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
             Editors,
             files => Languages.NotifyFilesChanged(files),
             OpenFileAsync,
-            Palette);
+            Palette)
+        {
+            AgentServers = AgentServers,
+        };
         Agent = new Coder.Presentation.Agent.AgentViewModel(services, workspace, Settings);
         Register(CommandIds.AgentFocus, "Coder Agent", "Open Chat", "Ctrl+Alt+I", ShowAgent);
         Register(CommandIds.AgentNewChat, "Coder Agent", "New Chat", null, () =>
@@ -897,6 +900,9 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
         IsTerminalVisible = true;
         TerminalRequested?.Invoke(this, request);
     }
+
+    /// <summary>Coding agents extensions bring to Coder Agent (<c>coder.agents</c>), offered in its model picker.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<Coder.Presentation.Agent.AgentServer> AgentServers { get; } = [];
 
     /// <summary>Views extensions add to the secondary side bar, as tabs beside Coder Agent.</summary>
     public System.Collections.ObjectModel.ObservableCollection<ExtensionSideBarView> SecondaryViews { get; } = [];

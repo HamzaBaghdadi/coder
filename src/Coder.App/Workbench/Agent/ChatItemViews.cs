@@ -185,6 +185,7 @@ public static class ChatItemViews
                 {
                     EditProposalItem edit => EditCard(edit),
                     CommandProposalItem command => CommandCard(command),
+                    PermissionProposalItem permission => PermissionCard(permission),
                     _ => null,
                 };
             }
@@ -379,6 +380,112 @@ public static class ChatItemViews
             },
         };
         command.PropertyChanged += (_, _) => Update();
+        Update();
+        return card;
+    }
+
+    /// <summary>
+    /// An agent asks permission for the tool above: the file change it would make (when it changes a file),
+    /// and the agent's own choices as buttons (or the one picked). The agent runs the tool itself once allowed.
+    /// </summary>
+    public static Control PermissionCard(PermissionProposalItem permission)
+    {
+        var choices = new WrapPanel { Orientation = Orientation.Horizontal };
+        foreach (var choice in permission.Choices)
+        {
+            var button = new FlatButton
+            {
+                Classes = { choice.IsPrimary ? "primary" : "secondary" },
+                Content = choice.Name,
+                Command = choice.Command,
+                Padding = new Thickness(Spacing.M, 3),
+                Margin = new Thickness(0, 0, Spacing.S, Spacing.XS),
+            };
+            AutomationProperties.SetName(button, choice.Name);
+            choices.Children.Add(button);
+        }
+
+        var outcome = new TextBlock { FontSize = Typography.SmallSize, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+
+        void Update()
+        {
+            choices.IsVisible = permission.IsPending;
+            outcome.IsVisible = !permission.IsPending;
+            (outcome.Text, outcome.Foreground) = permission.State switch
+            {
+                ProposalState.Accepted => ($"✓ {permission.Chosen?.Name}", Palette.Accent),
+                ProposalState.Rejected => ($"{permission.Chosen?.Name}: not run", Palette.TextSecondary),
+                ProposalState.Cancelled => ("Stopped before a decision; not run", Palette.TextMuted),
+                _ => (string.Empty, Palette.TextSecondary),
+            };
+        }
+
+        var body = new StackPanel { Spacing = Spacing.S };
+        if (permission.Change is { } change)
+        {
+            var counts = new TextBlock { FontSize = Typography.SmallSize, VerticalAlignment = VerticalAlignment.Center };
+            counts.Inlines!.Add(new Run($"+{permission.Added}") { Foreground = Palette.Accent });
+            counts.Inlines.Add(new Run(" "));
+            counts.Inlines.Add(new Run($"−{permission.Removed}") { Foreground = Palette.Danger });
+            var fileButton = new FlatButton
+            {
+                Padding = new Thickness(2, 1),
+                Command = permission.OpenFileCommand,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    Children =
+                    {
+                        FileIcons.File(change.Path, 14),
+                        new TextBlock { Text = permission.RelativePath, FontSize = Typography.SmallSize, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center },
+                        new TextBlock { Text = permission.IsNewFile ? "new file" : string.Empty, FontSize = Typography.CaptionSize, Foreground = Palette.TextMuted, VerticalAlignment = VerticalAlignment.Center },
+                    },
+                },
+            };
+            AutomationProperties.SetName(fileButton, $"Open {permission.RelativePath}");
+            var openDiff = new FlatButton(Icons.Diff, "Open Diff in Editor", 14) { Command = permission.OpenDiffCommand };
+            var lines = new StackPanel();
+            foreach (var line in permission.Lines.Take(EditProposalItem.MaxCardLines))
+            {
+                lines.Children.Add(DiffRow(line));
+            }
+
+            body.Children.Add(new DockPanel { Children = { openDiff.Dock(Dock.Right), counts.Dock(Dock.Right), fileButton } });
+            body.Children.Add(new Border
+            {
+                Background = Palette.EditorBackground,
+                BorderBrush = Palette.Border,
+                BorderThickness = new Thickness(1),
+                CornerRadius = Spacing.RadiusMedium,
+                ClipToBounds = true,
+                Child = new ScrollViewer { MaxHeight = 320, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, Content = lines },
+            });
+        }
+        else
+        {
+            body.Children.Add(new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                Children =
+                {
+                    new Icon(Icons.Terminal, 14) { Foreground = Palette.TextSecondary },
+                    new TextBlock { Text = "Allow this?", FontSize = Typography.SmallSize, FontWeight = FontWeight.SemiBold },
+                },
+            });
+        }
+
+        body.Children.Add(new Panel { Children = { choices, outcome } });
+        var card = new Border
+        {
+            Classes = { "card", "permission-proposal" },
+            Margin = new Thickness(Spacing.L, Spacing.XXS, 0, Spacing.XXS),
+            Padding = new Thickness(Spacing.M),
+            Child = body,
+        };
+        permission.PropertyChanged += (_, _) => Update();
         Update();
         return card;
     }
