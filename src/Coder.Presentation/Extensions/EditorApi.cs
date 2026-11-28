@@ -21,6 +21,8 @@ namespace Coder.Presentation.Extensions;
 public sealed class EditorApi : IEditorApi, IDisposable
 {
     private static readonly TimeSpan SelectionDelay = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan DiagnosticsDelay = TimeSpan.FromMilliseconds(150);
+    private CancellationTokenSource? _diagnosticsDelay;
     /// <summary>At most this many buttons in a <c>window/showMessageRequest</c> question.</summary>
     public const int MaxActions = 4;
 
@@ -43,6 +45,7 @@ public sealed class EditorApi : IEditorApi, IDisposable
                 TrackActiveEditor();
             }
         };
+        workbench.Languages.DiagnosticsChanged += (_, _) => OnDiagnosticsChanged();
         workbench.Explorer.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(Coder.Presentation.Explorer.ExplorerViewModel.RootPath))
@@ -61,8 +64,14 @@ public sealed class EditorApi : IEditorApi, IDisposable
     [
         "workspace/folders", "editor/open", "editor/list", "editor/selection", "editor/text", "editor/save", "editor/isDirty",
         "diff/review", "diff/close", "diff/closeAll", "diagnostics/get", "terminal/create", "window/showMessage",
-        "window/showMessageRequest",
+        "window/showMessageRequest", "editor/setDecorations", "editor/clearDecorations",
     ];
+
+    /// <summary>At most this many decorations in one <c>editor/setDecorations</c>.</summary>
+    public const int MaxDecorations = 10_000;
+
+    /// <summary>A stopped program's decorations go with it.</summary>
+    public void Forget(InstalledExtension extension) => _workbench.Decorations.Clear(extension.Id);
 
     public JsonObject InitializeParameters() => new()
     {
@@ -72,7 +81,11 @@ public sealed class EditorApi : IEditorApi, IDisposable
         ["workspaceFolders"] = Folders(),
     };
 
-    public void Dispose() => _selectionDelay?.Dispose();
+    public void Dispose()
+    {
+        _selectionDelay?.Dispose();
+        _diagnosticsDelay?.Dispose();
+    }
 
     public async Task<JsonNode?> HandleAsync(InstalledExtension extension, string method, JsonElement parameters, CancellationToken cancellationToken)
     {
@@ -154,6 +167,14 @@ public sealed class EditorApi : IEditorApi, IDisposable
 
             case "window/showMessageRequest":
                 return await AskAsync(extension, p, cancellationToken);
+
+            case "editor/setDecorations":
+                _workbench.Decorations.Set(extension.Id, Path(p), Decorations(p));
+                return new JsonObject();
+
+            case "editor/clearDecorations":
+                _workbench.Decorations.Clear(extension.Id);
+                return new JsonObject();
 
             default:
                 throw new InvalidOperationException($"Unknown method {method}.");
@@ -314,6 +335,23 @@ public sealed class EditorApi : IEditorApi, IDisposable
         OnSelectionChanged(this, EventArgs.Empty);
     }
 
+    /// <summary>Diagnostics arrive in bursts (a server reports file by file): tell programs once they settle.</summary>
+    private async void OnDiagnosticsChanged()
+    {
+        _diagnosticsDelay?.Cancel();
+        var delay = _diagnosticsDelay = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(DiagnosticsDelay, delay.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        Notification?.Invoke(this, ("diagnostics/changed", new JsonObject()));
+    }
+
     /// <summary>Selection changes come with every caret move: tell programs once it settles.</summary>
     private async void OnSelectionChanged(object? sender, EventArgs e)
     {
@@ -362,6 +400,42 @@ public sealed class EditorApi : IEditorApi, IDisposable
     {
         static TextPosition Position(JsonElement p) => new(p.GetProperty("line").GetInt32(), p.GetProperty("character").GetInt32());
         return new TextRange(Position(range.GetProperty("start")), Position(range.GetProperty("end")));
+    }
+
+    /// <summary><c>decorations</c> of <c>editor/setDecorations</c>: <c>[{line, text, kind?}]</c>, kind being a diagnostic severity or absent.</summary>
+    private static List<LineDecoration> Decorations(JsonElement p)
+    {
+        if (!p.TryGetProperty("decorations", out var list) || list.ValueKind != JsonValueKind.Array)
+        {
+            throw new ArgumentException("editor/setDecorations needs \"decorations\" (an array; empty clears the file).");
+        }
+
+        if (list.GetArrayLength() > MaxDecorations)
+        {
+            throw new ArgumentException($"At most {MaxDecorations} decorations per file.");
+        }
+
+        var decorations = new List<LineDecoration>();
+        foreach (var item in list.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("line", out var line) || !line.TryGetInt32(out var number) || number < 0 || String(item, "text") is not { } text)
+            {
+                throw new ArgumentException("Each decoration needs a \"line\" (zero-based) and a \"text\".");
+            }
+
+            var kind = String(item, "kind") switch
+            {
+                "error" => DecorationKind.Error,
+                "warning" => DecorationKind.Warning,
+                "information" => DecorationKind.Information,
+                "hint" => DecorationKind.Hint,
+                null => DecorationKind.Default,
+                var other => throw new ArgumentException($"Unknown decoration kind \"{other}\" (error, warning, information, hint, or none)."),
+            };
+            decorations.Add(new LineDecoration(number, text, kind));
+        }
+
+        return decorations;
     }
 
     /// <summary><c>program</c> and <c>args</c> of <c>terminal/create</c>: a program run directly, its arguments passed as given.</summary>

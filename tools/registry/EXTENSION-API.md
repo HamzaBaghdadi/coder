@@ -34,6 +34,9 @@ In Coder's registry, entries with a program must be verified.
 - `contributes.commands` and `contributes.keybindings` are VS Code's. The commands show in the command
   palette from the moment the extension is installed. Running one starts the program if needed and
   sends it `commands/execute`.
+- `coder.agents` (0.5.0+) brings coding agents to Coder Agent's picker:
+  `[{ "id": "claude-code.agent", "name": "Claude Code", "args": ["--acp"] }]`. See
+  [Coding agents](#coding-agents-agent-client-protocol).
 - Ship one package per platform (the registry's `platforms` map, below), each with its own program.
 
 ## Running
@@ -58,6 +61,7 @@ In Coder's registry, entries with a program must be verified.
 | `editor/activeChanged` | notification | `{path}` | `path` is null for an unsaved file or no editor. |
 | `editor/selectionChanged` | notification | `{path, text, range, isEmpty}` | Sent once the selection settles (~100 ms). |
 | `workspace/foldersChanged` | notification | `{folders: [path]}` | |
+| `diagnostics/changed` | notification | `{}` | 0.5.0+. Some file's diagnostics changed; sent once a burst settles (~150 ms). Read them with `diagnostics/get`. |
 | `shutdown` / `exit` | request / notification | none | |
 
 ## Program → Coder
@@ -81,6 +85,8 @@ lines and UTF-16 columns (as in LSP). Errors come back as JSON-RPC errors with a
 | `terminal/create` | `{name, command?, program?, args?, cwd?, env?, view?, message?, replace?}` | `{}`. Opens a terminal named `name` in the default shell, with `env` added, and types `command` into it: in the terminal panel, or in one of the extension's own side-bar views (`view`), which it then shows. A view that already runs a terminal is only shown, unless `replace` is true. `message` is printed on the terminal's screen first. With `program` (0.5.0+), see [Running a program in a terminal](#running-a-program-in-a-terminal). |
 | `window/showMessage` | `{text}` | `{}`. Shown in the status bar. |
 | `window/showMessageRequest` | `{message, detail?, actions?: [{title, ...}]}` | The action the user picked (the object you sent, extra fields included), or `null` when they dismissed it. 0.5.0+. See [Asking the user](#asking-the-user). |
+| `editor/setDecorations` | `{path, decorations: [{line, text, kind?}]}` | `{}`. 0.5.0+. Text after the end of lines (zero-based `line`), in faint italics; `kind` (`error`, `warning`, `information`, `hint`) colors it like a diagnostic, on a light tint. Replaces this extension's decorations in that file (an empty array clears them); other extensions' stay, and where two decorate a line the more severe shows. Up to 10,000 per file, 500 characters each. They're cleared when the program stops. |
+| `editor/clearDecorations` | none | `{}`. 0.5.0+. Removes all of this extension's decorations. |
 | `window/log` | `{text}` | notification; ignored for now. |
 
 ## Running a program in a terminal
@@ -127,3 +133,38 @@ that's `window/showMessage`.
 `initialize` gives `coderVersion`. A Coder older than a method answers it with an error (unknown
 method), and ignores parameters it doesn't know: before 0.5.0, `program`/`args` are ignored and only
 `command` is typed. Send both when you can, or check `coderVersion` first.
+
+## Coding agents (Agent Client Protocol)
+
+An extension can bring a coding agent to Coder Agent, the chat in the secondary side bar. The agent is a
+program speaking the [Agent Client Protocol](https://agentclientprotocol.com) (ACP), the open protocol
+between editors and coding agents that Zed, JetBrains and Neovim use. An agent that already speaks ACP works
+in Coder unchanged.
+
+```json
+"coder": {
+  "program": { "win-x64": "bin/my-agent.exe" },
+  "agents": [{ "id": "my-agent", "name": "My Agent", "args": ["--acp"] }]
+}
+```
+
+- Each agent runs the extension's `coder.program` with `args`, or its own `program` (a map by platform, like
+  `coder.program`), in the extension's folder. It's a separate process from the extension's program.
+- The agent shows in Coder Agent's model picker as "My Agent · Agent · <extension name>". Picking it sends the
+  chat to it. The first message starts it, after the same consent as the extension's program.
+- Coder speaks ACP version 1 on the agent's stdin and stdout, **one JSON-RPC message per line** (not
+  `Content-Length` framed like the Editor API). Write logs to stderr; Coder shows its last lines if the agent
+  fails to start.
+- What Coder sends: `initialize` (with `clientInfo` `coder`, and no `fs` or `terminal` capabilities yet: agents
+  read and write files and run commands themselves), `session/new` (`cwd` is the open folder, or the user's home),
+  `session/prompt` (text, plus images when the agent's `promptCapabilities.image` is true) and `session/cancel`
+  when the user presses Stop.
+- What Coder shows: `agent_message_chunk` and `agent_thought_chunk` as the reply and its reasoning, `tool_call`
+  and `tool_call_update` as tool cards (status, text content; a `diff` shows as the file change), and `plan` as a
+  checklist. Other updates are ignored.
+- `session/request_permission` shows the agent's options as buttons on the tool's card (an `allow_*` option is the
+  default button), with the tool's `diff`, if any, as a preview with "Open Diff". Stop answers `cancelled`.
+- New Chat starts a new session with the same process. The process ends when the extension is uninstalled or
+  Coder closes.
+- An error whose code is `-32000` (ACP's `auth_required`), or whose message says to log in, is shown as "needs you to
+  sign in".

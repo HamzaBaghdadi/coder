@@ -212,6 +212,19 @@ public sealed class CodeEditor : ScrollViewer
         _view.SetBlameSource(line => Tab is { } tab ? blame.Annotation(tab, line) : null);
     }
 
+    /// <summary>Shows extensions' end-of-line decorations for this file; repaints when its decorations change.</summary>
+    public void SetDecorations(Coder.Presentation.Editors.LineDecorations decorations)
+    {
+        decorations.Changed += (_, path) =>
+        {
+            if (Tab is { } tab && Coder.Core.Lsp.DocumentUri.PathComparer.Equals(tab.FilePath, path))
+            {
+                _view.InvalidateVisual();
+            }
+        };
+        _view.SetDecorationsSource(line => Tab is { } tab ? decorations.For(tab.FilePath, line) : null);
+    }
+
     /// <summary>Shows AI inline suggestions (ghost text) after the caret; repaints when they change.</summary>
     public void SetInlineSuggestions(Coder.Presentation.Agent.InlineSuggestionsViewModel suggestions)
     {

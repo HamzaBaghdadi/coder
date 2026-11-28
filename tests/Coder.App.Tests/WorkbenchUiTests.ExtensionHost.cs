@@ -119,6 +119,25 @@ public sealed partial class WorkbenchUiTests
             await Assert.ThrowsAsync<LanguageServerException>(() => program.Call("terminal/create", new JsonObject { ["args"] = new JsonArray("x") }));
             await Assert.ThrowsAsync<LanguageServerException>(() => program.Call("terminal/create", new JsonObject { ["program"] = Path.Combine(root, "missing.exe") }));
 
+            // End-of-line decorations: set per file (replacing the extension's earlier ones), drawn in the editor.
+            await program.Call("editor/setDecorations", new JsonObject
+            {
+                ["path"] = file,
+                ["decorations"] = new JsonArray(
+                    new JsonObject { ["line"] = 1, ["text"] = "Cannot find name 'beta'", ["kind"] = "error" },
+                    new JsonObject { ["line"] = 2, ["text"] = "a note" }),
+            });
+            Assert.Equal(("Cannot find name 'beta'", Coder.Presentation.Editors.DecorationKind.Error), (workbench.Decorations.For(file, 1)?.Text, workbench.Decorations.For(file, 1)?.Kind));
+            Assert.Equal(Coder.Presentation.Editors.DecorationKind.Default, workbench.Decorations.For(file, 2)?.Kind);
+            var view = window.GetVisualDescendants().OfType<Coder.App.Editor.EditorView>().First();
+            Assert.Equal("Cannot find name 'beta'", view.ShownDecoration(1)?.Text);
+            Dispatcher.UIThread.RunJobs();
+            Save(window, "extension-decorations");
+            await program.Call("editor/setDecorations", new JsonObject { ["path"] = file, ["decorations"] = new JsonArray(new JsonObject { ["line"] = 0, ["text"] = "only this" }) });
+            Assert.Null(workbench.Decorations.For(file, 1));
+            Assert.Equal("only this", workbench.Decorations.For(file, 0)?.Text);
+            await Assert.ThrowsAsync<LanguageServerException>(() => program.Call("editor/setDecorations", new JsonObject { ["path"] = file, ["decorations"] = new JsonArray(new JsonObject { ["line"] = 0, ["text"] = "x", ["kind"] = "fatal" }) }));
+
             // A question with buttons: the action picked comes back as sent, with the extension named for the user.
             dialogs.NextChoice = 1;
             var answer = await program.Call("window/showMessageRequest", new JsonObject
@@ -141,6 +160,7 @@ public sealed partial class WorkbenchUiTests
             await store.UninstallAsync("acme.helper");
             Assert.True(program.ShutdownRequested);
             Assert.Empty(host.RunningIds);
+            Assert.Null(workbench.Decorations.For(file, 0)); // its decorations went with it
             await WaitUntil(() => !workbench.Commands.Contains("helper.hello"));
             await WaitUntil(() => workbench.AgentServers.Count == 0, () => "its agent is still offered");
             window.Close();

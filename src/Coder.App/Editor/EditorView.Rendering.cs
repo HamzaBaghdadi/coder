@@ -49,6 +49,7 @@ public sealed partial class EditorView
             DrawColorSwatches(context, firstLine, lastLine);
             DrawCtrlLink(context);
             DrawDiagnostics(context, firstLine, lastLine);
+            DrawDecorations(context, firstLine, lastLine);
             DrawBlame(context);
             DrawInlineSuggestionLines(context, bounds.Width);
             DrawPreedit(context);

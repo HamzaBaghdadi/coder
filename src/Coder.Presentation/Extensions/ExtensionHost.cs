@@ -35,6 +35,11 @@ public interface IEditorApi
 
     /// <summary>Something every program hears about (the selection moved, a folder opened): method and params.</summary>
     event EventHandler<(string Method, JsonNode? Parameters)>? Notification;
+
+    /// <summary>An extension's program stopped (or crashed): drop what it left on screen (its decorations).</summary>
+    void Forget(InstalledExtension extension)
+    {
+    }
 }
 
 /// <summary>
@@ -359,6 +364,7 @@ public sealed class ExtensionHost : IAsyncDisposable
 
         _running.Remove(running.Extension.Id);
         running.Transport.Dispose();
+        _api.Forget(running.Extension); // a restart sets its decorations again
         RunningChanged?.Invoke(this, EventArgs.Empty);
         if (_disposed)
         {
@@ -400,6 +406,7 @@ public sealed class ExtensionHost : IAsyncDisposable
 
         running.Connection.Dispose();
         running.Transport.Dispose();
+        _api.Forget(running.Extension);
         RunningChanged?.Invoke(this, EventArgs.Empty);
     }
 

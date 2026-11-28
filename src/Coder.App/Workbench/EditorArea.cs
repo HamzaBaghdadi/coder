@@ -35,6 +35,7 @@ public sealed class EditorArea : Panel
             .Bind(CodeEditor.SearchMatchesProperty, workbench.Find, x => x.Matches)
             .Bind(CodeEditor.CurrentSearchMatchProperty, workbench.Find, x => x.CurrentIndex);
         _editor.SetBlame(workbench.SourceControl.Blame);
+        _editor.SetDecorations(workbench.Decorations);
         _editor.SetInlineSuggestions(workbench.InlineSuggestions);
         _editor.SetDefinitionSupport(tab => workbench.Languages.Supports(tab, c => c.HasDefinition));
         _editor.View.RegisterColorPicker(workbench.Commands);

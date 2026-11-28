@@ -46,6 +46,22 @@ public sealed partial class AgentViewModel
         })),
     ];
 
+    /// <summary>Ends every running agent's process (Coder is closing).</summary>
+    public async Task StopAgentsAsync()
+    {
+        Stop();
+        foreach (var connection in _agentConnections.Values.ToList())
+        {
+            if (connection.Client is { } client)
+            {
+                await client.DisposeAsync();
+            }
+        }
+
+        _agentConnections.Clear();
+        ResetAgentSession();
+    }
+
     /// <summary>Ends the agent's session (New Chat): the next message opens a new one.</summary>
     private void ResetAgentSession()
     {

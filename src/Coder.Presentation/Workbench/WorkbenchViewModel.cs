@@ -901,6 +901,9 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
         TerminalRequested?.Invoke(this, request);
     }
 
+    /// <summary>Text extensions show after line ends (<c>editor/setDecorations</c>), such as Error Lens's messages.</summary>
+    public Coder.Presentation.Editors.LineDecorations Decorations { get; } = new();
+
     /// <summary>Coding agents extensions bring to Coder Agent (<c>coder.agents</c>), offered in its model picker.</summary>
     public System.Collections.ObjectModel.ObservableCollection<Coder.Presentation.Agent.AgentServer> AgentServers { get; } = [];
 
@@ -1116,6 +1119,11 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
         InlineSuggestions.Dispose();
         SourceControl.Dispose();
         _reloader.Dispose();
+        if (Agent is not null)
+        {
+            await Agent.StopAgentsAsync(); // coding agents (ACP processes) end with Coder
+        }
+
         if (ExtensionHost is not null)
         {
             await ExtensionHost.DisposeAsync(); // extension programs end with Coder
