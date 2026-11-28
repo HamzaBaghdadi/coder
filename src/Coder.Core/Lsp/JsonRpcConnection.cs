@@ -7,10 +7,20 @@ using System.Threading.Channels;
 
 namespace Coder.Core.Lsp;
 
+/// <summary>How messages are delimited on the stream.</summary>
+public enum JsonRpcFraming
+{
+    /// <summary><c>Content-Length</c> headers, as the Language Server Protocol uses on stdio.</summary>
+    ContentLength,
+
+    /// <summary>One message per line (UTF-8, no embedded newlines), as the Agent Client Protocol uses.</summary>
+    NewlineDelimited,
+}
+
 /// <summary>
-/// JSON-RPC 2.0 over a byte stream with <c>Content-Length</c> framing, as the Language Server
-/// Protocol uses on stdio. Writes go through one queue so messages never interleave and callers
-/// never block; reads run on a background loop.
+/// JSON-RPC 2.0 over a byte stream, with <c>Content-Length</c> framing (the Language Server Protocol's,
+/// the default) or one message per line (<see cref="JsonRpcFraming"/>). Writes go through one queue so
+/// messages never interleave and callers never block; reads run on a background loop.
 /// <para>Handlers and the <see cref="Closed"/> event run on the read loop's thread: callers that touch
 /// UI state must marshal themselves.</para>
 /// </summary>
@@ -22,6 +32,7 @@ public sealed class JsonRpcConnection : IDisposable
 
     private readonly Stream _input;
     private readonly Stream _output;
+    private readonly JsonRpcFraming _framing;
     private readonly Channel<byte[]> _outgoing = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true });
     private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
     private readonly Dictionary<string, Action<JsonElement>> _notificationHandlers = [];
@@ -36,10 +47,11 @@ public sealed class JsonRpcConnection : IDisposable
 
     /// <param name="input">Stream the other side writes to (its stdout).</param>
     /// <param name="output">Stream the other side reads from (its stdin).</param>
-    public JsonRpcConnection(Stream input, Stream output)
+    public JsonRpcConnection(Stream input, Stream output, JsonRpcFraming framing = JsonRpcFraming.ContentLength)
     {
         _input = input;
         _output = output;
+        _framing = framing;
     }
 
     /// <summary>Raised once when the connection ends; the argument is the error, or null for a clean end of stream.</summary>
@@ -114,6 +126,16 @@ public sealed class JsonRpcConnection : IDisposable
     private void Send(JsonObject message)
     {
         var body = Encoding.UTF8.GetBytes(message.ToJsonString());
+        if (_framing == JsonRpcFraming.NewlineDelimited)
+        {
+            // The serializer escapes newlines inside strings, so the message is one line.
+            var line = new byte[body.Length + 1];
+            body.CopyTo(line, 0);
+            line[^1] = (byte)'\n';
+            _outgoing.Writer.TryWrite(line);
+            return;
+        }
+
         var header = Encoding.ASCII.GetBytes($"Content-Length: {body.Length}\r\n\r\n");
         var frame = new byte[header.Length + body.Length];
         header.CopyTo(frame, 0);
@@ -146,7 +168,7 @@ public sealed class JsonRpcConnection : IDisposable
         var reader = new FrameReader(_input);
         try
         {
-            while (await reader.ReadAsync(_lifetime.Token).ConfigureAwait(false) is { } body)
+            while (await (_framing == JsonRpcFraming.NewlineDelimited ? reader.ReadLineMessageAsync(_lifetime.Token) : reader.ReadAsync(_lifetime.Token)).ConfigureAwait(false) is { } body)
             {
                 using var document = JsonDocument.Parse(body);
                 Dispatch(document.RootElement);
@@ -332,6 +354,38 @@ public sealed class JsonRpcConnection : IDisposable
             }
 
             return body;
+        }
+
+        /// <summary>The next non-empty line's bytes (a newline-delimited message, its UTF-8 kept intact), or null at end of stream.</summary>
+        public async Task<byte[]?> ReadLineMessageAsync(CancellationToken cancellationToken)
+        {
+            var line = new MemoryStream();
+            while (true)
+            {
+                if (_start == _end && !await FillAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    return line.Length > 0 ? line.ToArray() : null; // a last message without its newline
+                }
+
+                var newline = Array.IndexOf(_buffer, (byte)'\n', _start, _end - _start);
+                if (newline < 0)
+                {
+                    line.Write(_buffer, _start, _end - _start);
+                    _start = _end;
+                    continue;
+                }
+
+                line.Write(_buffer, _start, newline - _start);
+                _start = newline + 1;
+                var bytes = line.ToArray();
+                var length = bytes.Length > 0 && bytes[^1] == '\r' ? bytes.Length - 1 : bytes.Length;
+                if (bytes.AsSpan(0, length).Trim(" \t"u8).Length > 0)
+                {
+                    return length == bytes.Length ? bytes : bytes[..length];
+                }
+
+                line.SetLength(0); // a blank line: skip it
+            }
         }
 
         private async Task<string?> ReadHeaderLineAsync(CancellationToken cancellationToken)

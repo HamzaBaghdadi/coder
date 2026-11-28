@@ -31,8 +31,8 @@ public sealed partial class EditorView
 
         var document = _editor.Document;
         var lineHeight = _metrics.LineHeight;
-        var firstLine = Math.Max(0, (int)(_offset.Y / lineHeight));
-        var lastLine = Math.Min(document.LineCount - 1, (int)((_offset.Y + bounds.Height) / lineHeight));
+        var firstLine = LineAtRow(Math.Max(0, (int)(_offset.Y / lineHeight))); // rows, so folded lines are skipped
+        var lastLine = Math.Min(document.LineCount - 1, LineAtRow((int)((_offset.Y + bounds.Height) / lineHeight)));
         var textLeft = TextLeft;
         var visible = VisibleSelections(firstLine, lastLine);
         var caretLines = visible.Select(s => document.GetLineOfOffset(s.Active)).ToHashSet();
@@ -46,9 +46,11 @@ public sealed partial class EditorView
             DrawIndentGuides(context, firstLine, lastLine, textLeft);
             DrawBracketMatch(context);
             DrawText(context, firstLine, lastLine);
+            DrawFoldedMarkers(context, firstLine, lastLine);
             DrawColorSwatches(context, firstLine, lastLine);
             DrawCtrlLink(context);
             DrawDiagnostics(context, firstLine, lastLine);
+            DrawDecorations(context, firstLine, lastLine);
             DrawBlame(context);
             DrawInlineSuggestionLines(context, bounds.Width);
             DrawPreedit(context);
@@ -61,7 +63,8 @@ public sealed partial class EditorView
         _layouts.Trim(firstLine, lastLine, _stickyLines);
     }
 
-    private double LineTop(int line) => line * _metrics.LineHeight - _offset.Y;
+    /// <summary>A line's top in view coordinates (its row's: lines in a folded block share their first line's).</summary>
+    private double LineTop(int line) => RowOf(line) * _metrics.LineHeight - _offset.Y;
 
     private double ColumnX(int visualColumn, double textLeft) => textLeft + visualColumn * _metrics.CharWidth - _offset.X;
 
@@ -140,7 +143,7 @@ public sealed partial class EditorView
         var start = document.GetPosition(startOffset);
         var end = document.GetPosition(endOffset);
 
-        for (var line = Math.Max(firstLine, start.Line); line <= Math.Min(lastLine, end.Line); line++)
+        for (var line = ShownFrom(Math.Max(firstLine, start.Line)); line <= Math.Min(lastLine, end.Line); line = NextLine(line))
         {
             var from = line == start.Line ? start.Column : 0;
             var to = line == end.Line ? end.Column : document.GetLineLength(line);
@@ -163,7 +166,7 @@ public sealed partial class EditorView
         var document = _editor!.Document;
         var tabSize = TabSize;
         var previousIndent = 0;
-        for (var line = firstLine; line <= lastLine; line++)
+        for (var line = firstLine; line <= lastLine; line = NextLine(line))
         {
             var text = document.GetLineText(line);
             var indent = TextColumns.ToVisual(text, TextColumns.LeadingWhitespaceLength(text), tabSize);
@@ -186,7 +189,7 @@ public sealed partial class EditorView
 
     private void DrawText(DrawingContext context, int firstLine, int lastLine)
     {
-        for (var line = firstLine; line <= lastLine; line++)
+        for (var line = firstLine; line <= lastLine; line = NextLine(line))
         {
             var layout = LayoutOf(line);
             layout.Layout.Draw(context, new Point(LayoutLeft(layout), LineTop(line) + _metrics.TextTop));
@@ -246,14 +249,15 @@ public sealed partial class EditorView
         var gutterWidth = GutterWidth;
         context.FillRectangle(Palette.EditorBackground, new Rect(0, 0, gutterWidth, height));
 
-        var numberRight = gutterWidth - GutterPaddingRight;
-        for (var line = firstLine; line <= lastLine; line++)
+        var numberRight = gutterWidth - GutterPaddingRight - FoldColumnWidth;
+        for (var line = firstLine; line <= lastLine; line = NextLine(line))
         {
             var number = _lineNumbers.Get(line + 1, caretLines.Contains(line), _metrics);
             context.DrawText(number, new Point(numberRight - number.Width, LineTop(line) + _metrics.TextTop));
         }
 
         DrawLineChanges(context, firstLine, lastLine);
+        DrawFoldControls(context, firstLine, lastLine);
     }
 
     /// <summary>

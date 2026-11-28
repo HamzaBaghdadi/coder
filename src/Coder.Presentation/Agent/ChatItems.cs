@@ -373,6 +373,99 @@ public sealed class CommandProposalItem : ChatItem
     }
 }
 
+/// <summary>One of the choices an agent offers when it asks permission ("Allow once", "Always allow", "Reject").</summary>
+public sealed record PermissionChoice(string Id, string Name, bool Allows, bool IsPrimary, ICommand Command);
+
+/// <summary>
+/// An agent (over the Agent Client Protocol) asks before running a tool: its choices as buttons and, when
+/// the tool changes a file, the change as a diff. The agent itself runs the tool once allowed.
+/// </summary>
+public sealed class PermissionProposalItem : ChatItem
+{
+    private readonly TaskCompletionSource<string?> _decision = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private ProposalState _state;
+    private PermissionChoice? _chosen;
+
+    /// <param name="change">The file change the tool would make, if any (shown as a diff).</param>
+    public PermissionProposalItem(IReadOnlyList<Coder.Core.Acp.AcpPermissionOption> options, EditProposal? change, string? relativePath, Action<PermissionProposalItem>? openDiff, Func<string, Task>? openFile)
+    {
+        var firstAllow = options.FirstOrDefault(o => o.Allows);
+        Choices = [.. options.Select(o => new PermissionChoice(o.Id, o.Name, o.Allows, ReferenceEquals(o, firstAllow), new RelayCommand(() => Choose(o.Id))))];
+        Change = change;
+        RelativePath = relativePath;
+        if (change is not null)
+        {
+            (Lines, Added, Removed) = EditProposalItem.Unified(change.Original is null ? [] : LineDiff.SplitLines(change.Original), LineDiff.SplitLines(change.Proposed));
+            OpenDiffCommand = new RelayCommand(() => openDiff?.Invoke(this));
+            OpenFileCommand = new RelayCommand(() => _ = openFile?.Invoke(change.Path));
+        }
+    }
+
+    public IReadOnlyList<PermissionChoice> Choices { get; }
+
+    /// <summary>The change the tool would make, or null for a tool that changes no file (a command, a fetch).</summary>
+    public EditProposal? Change { get; }
+
+    public string? RelativePath { get; }
+
+    public bool IsNewFile => Change is { Original: null };
+
+    public IReadOnlyList<DiffLine> Lines { get; } = [];
+
+    public int Added { get; }
+
+    public int Removed { get; }
+
+    public ICommand? OpenDiffCommand { get; }
+
+    public ICommand? OpenFileCommand { get; }
+
+    public ProposalState State
+    {
+        get => _state;
+        private set
+        {
+            if (SetProperty(ref _state, value))
+            {
+                OnPropertyChanged(nameof(IsPending));
+            }
+        }
+    }
+
+    public bool IsPending => _state == ProposalState.Pending;
+
+    /// <summary>What the user chose, once they did.</summary>
+    public PermissionChoice? Chosen
+    {
+        get => _chosen;
+        private set => SetProperty(ref _chosen, value);
+    }
+
+    /// <summary>The chosen option's id; null when the turn ended before the user chose.</summary>
+    public Task<string?> Decision => _decision.Task;
+
+    public void Choose(string optionId)
+    {
+        if (State != ProposalState.Pending || Choices.FirstOrDefault(c => c.Id == optionId) is not { } choice)
+        {
+            return;
+        }
+
+        Chosen = choice;
+        State = choice.Allows ? ProposalState.Accepted : ProposalState.Rejected;
+        _decision.TrySetResult(optionId);
+    }
+
+    public void Cancel()
+    {
+        if (State == ProposalState.Pending)
+        {
+            State = ProposalState.Cancelled;
+            _decision.TrySetResult(null);
+        }
+    }
+}
+
 /// <summary>A line from Coder rather than the model: an error (with Retry), or information.</summary>
 public sealed class NoticeItem(string text, bool isError, ICommand? retry = null) : ChatItem
 {

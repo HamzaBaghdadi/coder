@@ -170,10 +170,14 @@ public sealed class TerminalPanel : DockPanel
         }
     }
 
-    /// <summary>A terminal an extension asked for: named, with its variables, its command typed in once the shell starts.</summary>
+    /// <summary>
+    /// A terminal an extension asked for: named, with its variables, its command typed in once the shell starts;
+    /// or running its program directly (a profile of its own, so Enter after it ends runs it again).
+    /// </summary>
     private void AddTerminal(TerminalRequest request)
     {
-        if (CreateTerminal(new TerminalGroup(), _workbench.DefaultShellProfile, request.WorkingDirectory, request.Environment) is not { } terminal)
+        var profile = request.ProgramCommandLine is { } programLine ? new ShellProfile("program", request.Name, programLine) : _workbench.DefaultShellProfile;
+        if (CreateTerminal(new TerminalGroup(), profile, request.WorkingDirectory, request.Environment) is not { } terminal)
         {
             return;
         }
@@ -181,7 +185,7 @@ public sealed class TerminalPanel : DockPanel
         terminal.Name = request.Name;
         _terminals.Add(terminal);
         Activate(terminal);
-        if (request.CommandLine is { Length: > 0 } command)
+        if (request.Program is null && request.CommandLine is { Length: > 0 } command)
         {
             terminal.Session.Write(command + "\r"); // the console keeps it until the shell reads input
         }

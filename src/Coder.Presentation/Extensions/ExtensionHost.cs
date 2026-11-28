@@ -35,6 +35,14 @@ public interface IEditorApi
 
     /// <summary>Something every program hears about (the selection moved, a folder opened): method and params.</summary>
     event EventHandler<(string Method, JsonNode? Parameters)>? Notification;
+
+    /// <summary>Something only one extension's program hears (an event in its panel): extension id, method, params.</summary>
+    event EventHandler<(string ExtensionId, string Method, JsonNode? Parameters)>? TargetedNotification;
+
+    /// <summary>An extension's program stopped (or crashed): drop what it left on screen (its decorations).</summary>
+    void Forget(InstalledExtension extension)
+    {
+    }
 }
 
 /// <summary>
@@ -67,12 +75,16 @@ public sealed class ExtensionHost : IAsyncDisposable
     private bool _disposed;
 
     private readonly IList<Workbench.ExtensionSideBarView> _views;
+    private readonly IList<Agent.AgentServer> _agents;
 
     /// <param name="views">Where extensions' side-bar views go (the workbench's secondary side bar tabs).</param>
+    /// <param name="agents">Where extensions' coding agents go (Coder Agent's picker).</param>
     public ExtensionHost(ExtensionStore store, ExtensionTrust trust, IDialogService dialogs, CommandRegistry commands, IEditorApi api,
-        IExtensionLauncher? launcher = null, Action<string>? showMessage = null, IList<Workbench.ExtensionSideBarView>? views = null)
+        IExtensionLauncher? launcher = null, Action<string>? showMessage = null, IList<Workbench.ExtensionSideBarView>? views = null,
+        IList<Agent.AgentServer>? agents = null)
     {
         _views = views ?? [];
+        _agents = agents ?? [];
         _store = store;
         _trust = trust;
         _dialogs = dialogs;
@@ -83,6 +95,7 @@ public sealed class ExtensionHost : IAsyncDisposable
         store.BeforeRemoveAsync = StopAsync;
         store.Changed += (_, _) => Post(() => _ = RefreshAsync());
         api.Notification += (_, n) => Broadcast(n.Method, n.Parameters);
+        api.TargetedNotification += (_, n) => SendTo(n.ExtensionId, n.Method, n.Parameters);
         foreach (var extension in store.Installed())
         {
             RegisterCommands(extension); // in the palette at once; the programs wait for StartAsync
@@ -128,6 +141,14 @@ public sealed class ExtensionHost : IAsyncDisposable
             await StopAsync(id); // uninstalled, or updated to a new folder
         }
 
+        foreach (var id in _agents.Select(a => a.ExtensionId).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList())
+        {
+            if (!installed.TryGetValue(id, out var now) || now.Agents.Count == 0 || _agents.Any(a => a.ExtensionId == id && now.Agents.All(n => n.Id != a.Id || n.Program != a.Program)))
+            {
+                RemoveAgents(id); // uninstalled, or its agents changed (RegisterCommands adds the new ones)
+            }
+        }
+
         foreach (var extension in installed.Values)
         {
             UnregisterCommands(extension.Id);
@@ -155,7 +176,20 @@ public sealed class ExtensionHost : IAsyncDisposable
         foreach (var view in extension.Views.Where(v => _views.All(existing => existing.Id != v.Id)))
         {
             _views.Add(new Workbench.ExtensionSideBarView(view.Id, view.Title, extension.Id,
-                () => view.Command is { } command ? RunCommandAsync(extension.Id, command) : Task.CompletedTask));
+                () => view.Command is { } command ? RunCommandAsync(extension.Id, command) : Task.CompletedTask)
+            {
+                Panel = view.Type == "panel" ? new PanelSurface(e => SendPanelEvent(extension.Id, view.Id, string.Empty, e)) : null,
+            });
+        }
+
+        // Its agents, for this platform; starting one asks the same consent as its program.
+        foreach (var agent in extension.Agents.Where(a => a.Program is not null && _agents.All(existing => existing.Id != a.Id)))
+        {
+            _agents.Add(new Agent.AgentServer(agent.Id, agent.Name, agent.Program!, agent.Arguments, extension.DisplayName)
+            {
+                ExtensionId = extension.Id,
+                AllowAsync = () => IsAllowedAsync(extension, askAgain: true),
+            });
         }
 
         var ids = new List<string>();
@@ -174,6 +208,15 @@ public sealed class ExtensionHost : IAsyncDisposable
         foreach (var view in _views.Where(v => string.Equals(v.ExtensionId, id, StringComparison.OrdinalIgnoreCase) && keep?.Contains(v.Id) != true).ToList())
         {
             _views.Remove(view);
+        }
+    }
+
+    /// <summary>Removes an extension's agents (uninstalled, or updated: the update registers its agents again).</summary>
+    private void RemoveAgents(string id)
+    {
+        foreach (var agent in _agents.Where(a => string.Equals(a.ExtensionId, id, StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            _agents.Remove(agent);
         }
     }
 
@@ -328,6 +371,7 @@ public sealed class ExtensionHost : IAsyncDisposable
 
         _running.Remove(running.Extension.Id);
         running.Transport.Dispose();
+        _api.Forget(running.Extension); // a restart sets its decorations again
         RunningChanged?.Invoke(this, EventArgs.Empty);
         if (_disposed)
         {
@@ -369,6 +413,7 @@ public sealed class ExtensionHost : IAsyncDisposable
 
         running.Connection.Dispose();
         running.Transport.Dispose();
+        _api.Forget(running.Extension);
         RunningChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -388,6 +433,18 @@ public sealed class ExtensionHost : IAsyncDisposable
             running.Connection.Notify(method, parameters?.DeepClone());
         }
     }
+
+    /// <summary>Tells one extension's program something (an event in its panel); nothing when it isn't running.</summary>
+    private void SendTo(string extensionId, string method, JsonNode? parameters)
+    {
+        if (_running.TryGetValue(extensionId, out var running))
+        {
+            running.Connection.Notify(method, parameters);
+        }
+    }
+
+    private void SendPanelEvent(string extensionId, string panel, string key, PanelEvent e) =>
+        SendTo(extensionId, "panel/event", new JsonObject { ["panel"] = panel, ["key"] = key, ["id"] = e.Id, ["type"] = e.Type, ["value"] = e.Value?.DeepClone() });
 
     // Threads -----------------------------------------------------------------------------------
 

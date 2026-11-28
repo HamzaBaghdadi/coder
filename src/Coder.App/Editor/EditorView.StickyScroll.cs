@@ -113,7 +113,7 @@ public sealed partial class EditorView
         }
 
         var lineHeight = _metrics.LineHeight;
-        var topLine = (int)(_offset.Y / lineHeight);
+        var topLine = LineAtRow((int)(_offset.Y / lineHeight)); // the line shown at the top (rows skip folded lines)
         var maxLines = Math.Min(StickyMaxLines, (int)(bounds.Height / lineHeight / 3));
         if (maxLines <= 0)
         {
@@ -232,7 +232,7 @@ public sealed partial class EditorView
         var text = document.GetLineText(line);
         _editor.SetCaret(document.GetLineStart(line) + TextColumns.LeadingWhitespaceLength(text));
         // Its outer headers stay pinned above it, so it lands just below them, where it was.
-        Offset = new Vector(_offset.X, (line - row) * _metrics.LineHeight);
+        Offset = new Vector(_offset.X, (RowOf(line) - row) * _metrics.LineHeight);
         RaiseScrollInvalidated(EventArgs.Empty);
         e.Handled = true;
         return true;

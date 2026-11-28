@@ -769,5 +769,23 @@ public sealed partial class WorkbenchUiTests
             Asked.Add(message);
             return Task.FromResult(true);
         }
+
+        /// <summary>What <see cref="PickFilesAsync"/> returns (the user's pick).</summary>
+        public IReadOnlyList<string> PickedFiles { get; set; } = [];
+
+        public Task<IReadOnlyList<string>> PickFilesAsync(string title, bool multiple) => Task.FromResult(PickedFiles);
+
+        /// <summary>The choice to pick in the next <see cref="ChooseAsync"/> (null: dismiss it).</summary>
+        public int? NextChoice { get; set; }
+
+        /// <summary>The detail and choices of each question with buttons.</summary>
+        public List<(string Detail, IReadOnlyList<string> Choices)> Choices { get; } = [];
+
+        public Task<int?> ChooseAsync(string message, string detail, IReadOnlyList<string> choices, CancellationToken cancellationToken = default)
+        {
+            Asked.Add(message);
+            Choices.Add((detail, choices));
+            return Task.FromResult(NextChoice);
+        }
     }
 }

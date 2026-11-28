@@ -35,7 +35,22 @@ public sealed record ExtensionCommand(string Id, string Category, string Title, 
 /// A view an extension adds to the secondary side bar (<c>coder.views</c>): a tab whose content is a
 /// terminal its program opens there. Showing the tab before that runs <see cref="Command"/>.
 /// </summary>
-public sealed record ExtensionView(string Id, string Title, string? Command);
+public sealed record ExtensionView(string Id, string Title, string? Command)
+{
+    /// <summary>What the view shows: a <c>terminal</c> its program opens there, or a <c>panel</c> (<c>panel/show</c>).</summary>
+    public string Type { get; init; } = "terminal";
+}
+
+/// <summary>A panel an extension opens as editor tabs (<c>coder.panels</c>), its content drawn by Coder (<c>panel/show</c>).</summary>
+public sealed record ExtensionPanel(string Id, string Title);
+
+/// <summary>
+/// A coding agent an extension brings to Coder Agent (<c>coder.agents</c>): a program speaking the Agent Client
+/// Protocol on stdio. It runs the extension's program (<c>coder.program</c>) with <see cref="Arguments"/>, or
+/// its own (<c>program</c>, per platform), inside the extension's folder.
+/// </summary>
+/// <param name="Program">The program for this machine, or null when there is none for this platform.</param>
+public sealed record ExtensionAgent(string Id, string Name, string? Program, IReadOnlyList<string> Arguments);
 
 /// <summary>An extension in Coder's extensions folder.</summary>
 /// <param name="Themes">The color themes it contributes (their labels).</param>
@@ -61,6 +76,12 @@ public sealed record InstalledExtension(string Id, string DisplayName, string Pu
 
     /// <summary>The views it adds to the secondary side bar (<c>coder.views</c>).</summary>
     public IReadOnlyList<ExtensionView> Views { get; init; } = [];
+
+    /// <summary>The panels it opens as editor tabs (<c>coder.panels</c>).</summary>
+    public IReadOnlyList<ExtensionPanel> Panels { get; init; } = [];
+
+    /// <summary>The coding agents it brings to Coder Agent (<c>coder.agents</c>).</summary>
+    public IReadOnlyList<ExtensionAgent> Agents { get; init; } = [];
 
     /// <summary>The SHA-256 of the package it was installed from, when Coder recorded it; consent to run its program is tied to it.</summary>
     public string? PackageSha256 { get; init; }

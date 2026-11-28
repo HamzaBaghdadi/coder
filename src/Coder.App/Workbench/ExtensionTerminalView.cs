@@ -66,6 +66,17 @@ public sealed class ExtensionTerminalView : Panel
         _terminalArea = new DockPanel { IsVisible = false, Children = { _banner.Dock(Dock.Top), _pane } };
         Children.Add(_status);
         Children.Add(_terminalArea);
+        if (view.Panel is { } surface)
+        {
+            // A panel view: Coder draws what the program sends (panel/show) instead of a terminal.
+            Panel = new ExtensionPanelView { Surface = surface, IsVisible = surface.Content is not null };
+            surface.PropertyChanged += (_, _) => Dispatcher.UIThread.Post(() =>
+            {
+                Panel.IsVisible = surface.Content is not null;
+                _status.IsVisible = surface.Content is null;
+            });
+            Children.Add(Panel);
+        }
         view.TerminalRequested += (_, request) => Dispatcher.UIThread.Post(() => Start(request));
         view.FocusRequested += (_, _) => Dispatcher.UIThread.Post(() => _pane.View.Focus());
         workbench.PropertyChanged += (_, e) =>
@@ -80,9 +91,23 @@ public sealed class ExtensionTerminalView : Panel
     /// <summary>The running session, for tests.</summary>
     internal TerminalSession? Session => _session;
 
-    /// <summary>Called when the tab is shown: the first time, the extension is asked to open its terminal.</summary>
+    /// <summary>For a panel view, what draws the panel (null for a terminal view).</summary>
+    internal ExtensionPanelView? Panel { get; }
+
+    /// <summary>Called when the tab is shown: the first time, the extension is asked to open its terminal (or fill its panel).</summary>
     public void OnShown()
     {
+        if (Panel is not null)
+        {
+            if (!_activated)
+            {
+                _activated = true;
+                _ = _view.ActivateAsync(); // the view's command: the program sends the panel's content
+            }
+
+            return;
+        }
+
         if (_session is not null)
         {
             Dispatcher.UIThread.Post(() => _pane.View.Focus(), DispatcherPriority.Background);
@@ -146,7 +171,8 @@ public sealed class ExtensionTerminalView : Panel
             var (columns, rows) = Bounds.Width > 0 ? _pane.View.GridSize : (80, 24);
             var folder = request.WorkingDirectory is { } cwd && Directory.Exists(cwd) ? cwd : _workbench.TerminalWorkingDirectory;
             var profile = _workbench.DefaultShellProfile;
-            session = TerminalSession.Start(folder, columns, rows, profile is null ? null : ShellIntegration.CommandLine(profile), request.Environment);
+            var commandLine = request.ProgramCommandLine ?? (profile is null ? null : ShellIntegration.CommandLine(profile));
+            session = TerminalSession.Start(folder, columns, rows, commandLine, request.Environment);
         }
         catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or IOException or PlatformNotSupportedException)
         {
@@ -172,7 +198,7 @@ public sealed class ExtensionTerminalView : Panel
         _terminalArea.IsVisible = true;
         _status.IsVisible = false;
         previous?.Dispose();
-        if (request.CommandLine is { Length: > 0 } command)
+        if (request.Program is null && request.CommandLine is { Length: > 0 } command)
         {
             session.Write(command + "\r");
         }

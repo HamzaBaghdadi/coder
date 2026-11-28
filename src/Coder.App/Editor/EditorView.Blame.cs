@@ -43,7 +43,7 @@ public sealed partial class EditorView
         }
 
         var line = _editor!.CaretPosition.Line;
-        var x = LineEndX(line) + BlameGapColumns * _metrics.CharWidth; // after any inlay hint at the line end
+        var x = DecorationEndX(line) + BlameGapColumns * _metrics.CharWidth; // after any inlay hint and decoration at the line end
         var y = LineTop(line) + (_metrics.LineHeight - cached.Layout.Height) / 2;
         using (context.PushOpacity(0.8))
         {

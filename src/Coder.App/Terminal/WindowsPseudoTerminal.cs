@@ -41,7 +41,19 @@ public sealed class WindowsPseudoTerminal : IPseudoTerminal
         inputRead.Dispose();
         outputWrite.Dispose();
 
-        _processHandle = StartProcess(commandLine, workingDirectory, _pseudoConsole, environment);
+        try
+        {
+            _processHandle = StartProcess(commandLine, workingDirectory, _pseudoConsole, environment);
+        }
+        catch
+        {
+            // The program couldn't start (an extension's program that isn't there): release the console and pipes.
+            NativeMethods.ClosePseudoConsole(_pseudoConsole);
+            inputWrite.Dispose();
+            outputRead.Dispose();
+            throw;
+        }
+
         _input = new FileStream(inputWrite, FileAccess.Write);
         _output = new FileStream(outputRead, FileAccess.Read);
 

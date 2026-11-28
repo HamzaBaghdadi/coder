@@ -29,7 +29,7 @@ public sealed partial class EditorView
     /// <summary>A change marker in the gutter was clicked: the owner shows that change (stage / revert).</summary>
     public event EventHandler<DiffHunk>? ChangeMarkerClicked;
 
-    private double ChangeMarkerX => GutterWidth - GutterPaddingRight + 8;
+    private double ChangeMarkerX => GutterWidth - FoldColumnWidth - GutterPaddingRight + 8;
 
     /// <summary>For tests: the middle of a line's change marker, in view coordinates.</summary>
     internal Point ChangeMarkerCenter(int line) => new(ChangeMarkerX + ChangeBarWidth / 2, LineTop(line) + _metrics.LineHeight / 2);
@@ -47,8 +47,8 @@ public sealed partial class EditorView
         }
 
         var lineHeight = _metrics.LineHeight;
-        var line = (int)((point.Y + _offset.Y) / lineHeight);
-        var nearBoundary = (int)Math.Round((point.Y + _offset.Y) / lineHeight); // deleted-line wedges sit between lines
+        var line = LineAtY(point.Y);
+        var nearBoundary = LineAtRow((int)Math.Round((point.Y + _offset.Y) / lineHeight)); // deleted-line wedges sit between lines
         foreach (var hunk in _lineChanges())
         {
             var hit = hunk.Kind == DiffHunkKind.Deleted
@@ -100,7 +100,7 @@ public sealed partial class EditorView
             }
 
             var brush = hunk.Kind == DiffHunkKind.Added ? AddedBar : ModifiedBar;
-            context.FillRectangle(brush, new Rect(x, LineTop(start), ChangeBarWidth, (end - start + 1) * lineHeight));
+            context.FillRectangle(brush, new Rect(x, LineTop(start), ChangeBarWidth, LineTop(end) + lineHeight - LineTop(start))); // folded lines take no height
         }
     }
 }

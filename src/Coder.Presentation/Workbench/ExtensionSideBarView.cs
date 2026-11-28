@@ -17,6 +17,9 @@ public sealed class ExtensionSideBarView(string id, string title, string extensi
 
     public string ExtensionId { get; } = extensionId;
 
+    /// <summary>For a view that shows a panel (<c>"type": "panel"</c>) rather than a terminal: its content and events.</summary>
+    public Coder.Presentation.Extensions.PanelSurface? Panel { get; init; }
+
     /// <summary>True while a terminal runs in the view (the view sets it).</summary>
     public bool HasTerminal
     {

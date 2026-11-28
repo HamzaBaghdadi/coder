@@ -17,7 +17,11 @@ public sealed class EditorArea : Panel
     private readonly CodeEditor _editor;
     private readonly DiffEditor _diff;
     private readonly SettingsView _settings;
+    private readonly ExtensionPanelView _panel;
     private readonly EditorGroupViewModel _editors;
+
+    /// <summary>For tests: what draws extension panels open as tabs.</summary>
+    internal ExtensionPanelView PanelView => _panel;
 
     public EditorArea(WorkbenchViewModel workbench)
     {
@@ -35,6 +39,7 @@ public sealed class EditorArea : Panel
             .Bind(CodeEditor.SearchMatchesProperty, workbench.Find, x => x.Matches)
             .Bind(CodeEditor.CurrentSearchMatchProperty, workbench.Find, x => x.CurrentIndex);
         _editor.SetBlame(workbench.SourceControl.Blame);
+        _editor.SetDecorations(workbench.Decorations);
         _editor.SetInlineSuggestions(workbench.InlineSuggestions);
         _editor.SetDefinitionSupport(tab => workbench.Languages.Supports(tab, c => c.HasDefinition));
         _editor.View.RegisterColorPicker(workbench.Commands);
@@ -50,6 +55,9 @@ public sealed class EditorArea : Panel
             .Bind(IsVisibleProperty, editors, x => x.ActiveTab, tab => tab is PreviewTabViewModel);
         var extension = new ExtensionDetailsView(workbench.OpenFileAsync)
             .Bind(IsVisibleProperty, editors, x => x.ActiveTab, tab => tab is Presentation.Extensions.ExtensionDetailsTabViewModel);
+        var panel = new ExtensionPanelView()
+            .Bind(IsVisibleProperty, editors, x => x.ActiveTab, tab => tab is Presentation.Extensions.PanelTabViewModel);
+        _panel = panel;
         editors.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(EditorGroupViewModel.ActiveTab))
@@ -57,6 +65,7 @@ public sealed class EditorArea : Panel
                 _diff.Diff = editors.ActiveTab as DiffTabViewModel;
                 preview.Tab = editors.ActiveTab as PreviewTabViewModel;
                 extension.Tab = editors.ActiveTab as Presentation.Extensions.ExtensionDetailsTabViewModel;
+                panel.Surface = (editors.ActiveTab as Presentation.Extensions.PanelTabViewModel)?.Surface;
                 if (editors.ActiveTab is Presentation.Settings.SettingsPageViewModel page)
                 {
                     settings.Page = page;
@@ -70,7 +79,7 @@ public sealed class EditorArea : Panel
             Children =
             {
                 new EditorTabStrip(editors).Dock(Dock.Top),
-                Breadcrumbs(workbench).Bind(IsVisibleProperty, editors, x => x.ActiveTab, tab => tab is not Presentation.Settings.SettingsPageViewModel).Dock(Dock.Top),
+                Breadcrumbs(workbench).Bind(IsVisibleProperty, editors, x => x.ActiveTab, tab => tab is not (Presentation.Settings.SettingsPageViewModel or Presentation.Extensions.PanelTabViewModel)).Dock(Dock.Top),
                 new Panel
                 {
                     Children =
@@ -82,6 +91,7 @@ public sealed class EditorArea : Panel
                         settings,
                         preview,
                         extension,
+                        panel,
                     },
                 },
             },

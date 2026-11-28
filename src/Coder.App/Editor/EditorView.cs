@@ -168,7 +168,7 @@ public sealed partial class EditorView : Control, ILogicalScrollable
             }
 
             // Allow scrolling the last line up to the top, like most editors.
-            var height = (_editor.Document.LineCount - 1) * _metrics.LineHeight + _viewport.Height;
+            var height = (VisibleLineCount - 1) * _metrics.LineHeight + _viewport.Height; // folded lines take no rows
             var width = TextLeft + _widestLine + _metrics.CharWidth * 8 + MinimapReserve;
             return new Size(Math.Max(width, _viewport.Width), Math.Max(height, _viewport.Height));
         }
@@ -261,7 +261,7 @@ public sealed partial class EditorView : Control, ILogicalScrollable
         get
         {
             var digits = Math.Max(3, (_editor?.Document.LineCount ?? 1).ToString(System.Globalization.CultureInfo.InvariantCulture).Length);
-            return GutterPaddingLeft + digits * _metrics.CharWidth + GutterPaddingRight;
+            return GutterPaddingLeft + digits * _metrics.CharWidth + GutterPaddingRight + FoldColumnWidth; // numbers, change bar, fold chevrons
         }
     }
 
@@ -314,7 +314,7 @@ public sealed partial class EditorView : Control, ILogicalScrollable
 
         var caret = _editor.CaretPosition;
         var x = CaretX(caret.Line, caret.Column) - TextLeft + _offset.X; // content coordinates
-        var y = caret.Line * _metrics.LineHeight;
+        var y = RowOf(caret.Line) * _metrics.LineHeight;
 
         var target = _offset;
         var margin = _metrics.LineHeight * 2;

@@ -46,6 +46,12 @@ public sealed partial class WorkbenchUiTests
             var host = workbench.EnableExtensionHost(launcher);
             Assert.True(workbench.Commands.Contains("helper.hello")); // in the palette before it runs
 
+            // Its agent (coder.agents) is offered to Coder Agent: the extension's program, with its arguments.
+            var declared = Assert.Single(workbench.AgentServers);
+            Assert.Equal(("helper.agent", "Helper Agent", "Acme Helper", "acme.helper"), (declared.Id, declared.Name, declared.Source, declared.ExtensionId));
+            Assert.Equal(Path.Combine(store.Folder, "acme.helper-1.0.0", "bin", "helper.exe"), declared.Program);
+            Assert.Equal(["--acp"], declared.Arguments);
+
             await host.StartAsync();
             var program = launcher.Programs.Single();
             Assert.Equal(["Allow Acme Helper to run on this computer?"], dialogs.Asked);
@@ -101,6 +107,52 @@ public sealed partial class WorkbenchUiTests
             await program.Call("window/showMessage", new JsonObject { ["text"] = "Helper says hi" });
             Assert.Equal("Helper says hi", workbench.StatusBar.Message);
 
+            // A program run directly in a terminal: its arguments pass as given, and "command" is ignored.
+            await program.Call("terminal/create", new JsonObject
+            {
+                ["name"] = "Tool",
+                ["command"] = "ignored",
+                ["program"] = "tool.exe",
+                ["args"] = new JsonArray("--flag", "two words", "say \"hi\""),
+            });
+            Assert.Equal(("tool.exe", "tool.exe --flag \"two words\" \"say \\\"hi\\\"\""), (terminal?.Program, terminal?.ProgramCommandLine));
+            await Assert.ThrowsAsync<LanguageServerException>(() => program.Call("terminal/create", new JsonObject { ["args"] = new JsonArray("x") }));
+            await Assert.ThrowsAsync<LanguageServerException>(() => program.Call("terminal/create", new JsonObject { ["program"] = Path.Combine(root, "missing.exe") }));
+
+            // End-of-line decorations: set per file (replacing the extension's earlier ones), drawn in the editor.
+            await program.Call("editor/setDecorations", new JsonObject
+            {
+                ["path"] = file,
+                ["decorations"] = new JsonArray(
+                    new JsonObject { ["line"] = 1, ["text"] = "Cannot find name 'beta'", ["kind"] = "error" },
+                    new JsonObject { ["line"] = 2, ["text"] = "a note" }),
+            });
+            Assert.Equal(("Cannot find name 'beta'", Coder.Presentation.Editors.DecorationKind.Error), (workbench.Decorations.For(file, 1)?.Text, workbench.Decorations.For(file, 1)?.Kind));
+            Assert.Equal(Coder.Presentation.Editors.DecorationKind.Default, workbench.Decorations.For(file, 2)?.Kind);
+            var view = window.GetVisualDescendants().OfType<Coder.App.Editor.EditorView>().First();
+            Assert.Equal("Cannot find name 'beta'", view.ShownDecoration(1)?.Text);
+            Dispatcher.UIThread.RunJobs();
+            Save(window, "extension-decorations");
+            await program.Call("editor/setDecorations", new JsonObject { ["path"] = file, ["decorations"] = new JsonArray(new JsonObject { ["line"] = 0, ["text"] = "only this" }) });
+            Assert.Null(workbench.Decorations.For(file, 1));
+            Assert.Equal("only this", workbench.Decorations.For(file, 0)?.Text);
+            await Assert.ThrowsAsync<LanguageServerException>(() => program.Call("editor/setDecorations", new JsonObject { ["path"] = file, ["decorations"] = new JsonArray(new JsonObject { ["line"] = 0, ["text"] = "x", ["kind"] = "fatal" }) }));
+
+            // A question with buttons: the action picked comes back as sent, with the extension named for the user.
+            dialogs.NextChoice = 1;
+            var answer = await program.Call("window/showMessageRequest", new JsonObject
+            {
+                ["message"] = "Install the helper tool?",
+                ["detail"] = "It takes a minute.",
+                ["actions"] = new JsonArray(new JsonObject { ["title"] = "Install" }, new JsonObject { ["title"] = "Not now", ["id"] = "later" }),
+            });
+            Assert.Equal(("Not now", "later"), (answer.GetProperty("title").GetString(), answer.GetProperty("id").GetString()));
+            Assert.Equal(("It takes a minute.\n\nFrom Acme Helper.", "Install,Not now"), (dialogs.Choices[^1].Detail, string.Join(',', dialogs.Choices[^1].Choices)));
+            dialogs.NextChoice = null;
+            var dismissed = await program.Call("window/showMessageRequest", new JsonObject { ["message"] = "Still there?", ["actions"] = new JsonArray(new JsonObject { ["title"] = "Yes" }) });
+            Assert.Equal(JsonValueKind.Null, dismissed.ValueKind);
+            await Assert.ThrowsAsync<LanguageServerException>(() => program.Call("window/showMessageRequest", new JsonObject { ["actions"] = new JsonArray() }));
+
             // Bad calls come back as errors, not crashes.
             await Assert.ThrowsAsync<LanguageServerException>(() => program.Call("editor/open", new JsonObject { ["path"] = "relative.txt" }));
 
@@ -108,7 +160,9 @@ public sealed partial class WorkbenchUiTests
             await store.UninstallAsync("acme.helper");
             Assert.True(program.ShutdownRequested);
             Assert.Empty(host.RunningIds);
+            Assert.Null(workbench.Decorations.For(file, 0)); // its decorations went with it
             await WaitUntil(() => !workbench.Commands.Contains("helper.hello"));
+            await WaitUntil(() => workbench.AgentServers.Count == 0, () => "its agent is still offered");
             window.Close();
         }
         finally
@@ -249,7 +303,9 @@ public sealed partial class WorkbenchUiTests
         File.WriteAllText(Path.Combine(folder, "bin", "helper.exe"), "the fake launcher never runs this");
         File.WriteAllText(Path.Combine(folder, "package.json"), $$"""
             { "publisher": "acme", "name": "helper", "version": "1.0.0", "displayName": "Acme Helper",
-              "coder": { "program": { "{{Platform.RuntimeId}}": "bin/helper.exe" }, "views": [ { "id": "helper.view", "title": "Helper View", "location": "secondarySidebar", "command": "helper.showView" } ] },
+              "coder": { "program": { "{{Platform.RuntimeId}}": "bin/helper.exe" }, "views": [ { "id": "helper.view", "title": "Helper View", "location": "secondarySidebar", "command": "helper.showView" } ],
+                         "agents": [ { "id": "helper.agent", "name": "Helper Agent", "args": ["--acp"] } ],
+                         "panels": [ { "id": "helper.request", "title": "Request" } ] },
               "contributes": { "commands": [ { "command": "helper.hello", "title": "Say Hello", "category": "Helper" }, { "command": "helper.showView", "title": "Show View", "category": "Helper" } ] } }
             """);
     }
@@ -311,6 +367,8 @@ public sealed partial class WorkbenchUiTests
                 return null;
             });
             _connection.OnNotification("editor/selectionChanged", p => LastSelectionText = p.GetProperty("text").GetString());
+            _connection.OnNotification("panel/event", p => PanelEvents.Writer.TryWrite(p.Clone()));
+            _connection.OnNotification("panel/closed", p => PanelEvents.Writer.TryWrite(p.Clone()));
             _connection.Start();
         }
 
@@ -319,6 +377,9 @@ public sealed partial class WorkbenchUiTests
         public TaskCompletionSource<JsonElement> Initialized { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Channel<string> Commands { get; } = Channel.CreateUnbounded<string>();
+
+        /// <summary>panel/event and panel/closed notifications, in order.</summary>
+        public Channel<JsonElement> PanelEvents { get; } = Channel.CreateUnbounded<JsonElement>();
 
         public bool ShutdownRequested { get; private set; }
 
@@ -429,6 +490,12 @@ public sealed partial class WorkbenchUiTests
         {
             Asked.Add(message);
             return Task.FromResult(answers[Math.Min(Asked.Count - 1, answers.Length - 1)]);
+        }
+
+        public Task<int?> ChooseAsync(string message, string detail, IReadOnlyList<string> choices, CancellationToken cancellationToken = default)
+        {
+            Asked.Add(message);
+            return Task.FromResult<int?>(null);
         }
     }
 }

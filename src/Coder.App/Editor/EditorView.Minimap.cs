@@ -75,11 +75,12 @@ public sealed partial class EditorView
         var document = _editor!.Document;
         var rows = Math.Max(1, (int)(Bounds.Height / MinimapLineHeight));
         var lineHeight = _metrics.LineHeight;
-        var maxOffset = Math.Max(1, (document.LineCount - 1) * lineHeight);
-        var ratio = Math.Clamp(_offset.Y / maxOffset, 0, 1);
+        // The minimap shows every line (folded ones too): the scroll position, in rows, becomes lines.
+        var topRow = _offset.Y / lineHeight;
+        var firstVisible = LineAtRow((int)topRow) + (topRow - Math.Floor(topRow));
+        var visibleLines = Math.Max(1, LineAtRow((int)(topRow + _viewport.Height / lineHeight)) - firstVisible);
+        var ratio = Math.Clamp(firstVisible / Math.Max(1, document.LineCount - 1), 0, 1);
         var first = document.LineCount > rows ? (int)Math.Round(ratio * (document.LineCount - rows)) : 0;
-        var visibleLines = _viewport.Height / lineHeight;
-        var firstVisible = _offset.Y / lineHeight;
         return (rows, first, (firstVisible - first) * MinimapLineHeight, visibleLines * MinimapLineHeight);
     }
 
@@ -242,7 +243,7 @@ public sealed partial class EditorView
         {
             var (_, first, _, _) = MinimapLayout();
             var line = first + y / MinimapLineHeight;
-            Offset = new Vector(_offset.X, (line - _viewport.Height / _metrics.LineHeight / 2) * _metrics.LineHeight);
+            Offset = new Vector(_offset.X, (RowOf((int)line) - _viewport.Height / _metrics.LineHeight / 2) * _metrics.LineHeight);
             RaiseScrollInvalidated(EventArgs.Empty); // the scroll bar follows
             (_, _, sliderTop, _) = MinimapLayout();
         }
@@ -280,7 +281,7 @@ public sealed partial class EditorView
         var rows = Math.Max(1, (int)(Bounds.Height / MinimapLineHeight));
         var span = MinimapLineHeight * Math.Max(1, Math.Min(rows, document.LineCount) - 1);
         var ratio = Math.Clamp((position.Y - grab) / span, 0, 1);
-        Offset = new Vector(_offset.X, ratio * (document.LineCount - 1) * _metrics.LineHeight);
+        Offset = new Vector(_offset.X, RowOf((int)Math.Round(ratio * (document.LineCount - 1))) * _metrics.LineHeight);
         RaiseScrollInvalidated(EventArgs.Empty); // the scroll bar follows
         e.Handled = true;
         return true;

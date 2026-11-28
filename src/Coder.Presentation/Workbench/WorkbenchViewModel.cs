@@ -279,7 +279,7 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
 
         var trust = new Coder.Core.Extensions.ExtensionTrust(Path.Combine(_extensionStore.Folder, ".trust.json"));
         ExtensionHost = new Coder.Presentation.Extensions.ExtensionHost(_extensionStore, trust, _dialogs, Commands,
-            new Coder.Presentation.Extensions.EditorApi(this, _fileSystem), launcher, message => StatusBar.Message = message, SecondaryViews);
+            new Coder.Presentation.Extensions.EditorApi(this, _fileSystem, _dialogs), launcher, message => StatusBar.Message = message, SecondaryViews, AgentServers);
         SecondaryViews.CollectionChanged += (_, _) =>
         {
             if (ActiveSecondaryView is { } id && SecondaryViews.All(v => v.Id != id))
@@ -303,7 +303,10 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
             Editors,
             files => Languages.NotifyFilesChanged(files),
             OpenFileAsync,
-            Palette);
+            Palette)
+        {
+            AgentServers = AgentServers,
+        };
         Agent = new Coder.Presentation.Agent.AgentViewModel(services, workspace, Settings);
         Register(CommandIds.AgentFocus, "Coder Agent", "Open Chat", "Ctrl+Alt+I", ShowAgent);
         Register(CommandIds.AgentNewChat, "Coder Agent", "New Chat", null, () =>
@@ -898,6 +901,12 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
         TerminalRequested?.Invoke(this, request);
     }
 
+    /// <summary>Text extensions show after line ends (<c>editor/setDecorations</c>), such as Error Lens's messages.</summary>
+    public Coder.Presentation.Editors.LineDecorations Decorations { get; } = new();
+
+    /// <summary>Coding agents extensions bring to Coder Agent (<c>coder.agents</c>), offered in its model picker.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<Coder.Presentation.Agent.AgentServer> AgentServers { get; } = [];
+
     /// <summary>Views extensions add to the secondary side bar, as tabs beside Coder Agent.</summary>
     public System.Collections.ObjectModel.ObservableCollection<ExtensionSideBarView> SecondaryViews { get; } = [];
 
@@ -1110,6 +1119,11 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
         InlineSuggestions.Dispose();
         SourceControl.Dispose();
         _reloader.Dispose();
+        if (Agent is not null)
+        {
+            await Agent.StopAgentsAsync(); // coding agents (ACP processes) end with Coder
+        }
+
         if (ExtensionHost is not null)
         {
             await ExtensionHost.DisposeAsync(); // extension programs end with Coder
@@ -1520,6 +1534,10 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
         Register(CommandIds.ZoomOut, "View", "Zoom Out", "Ctrl+OemMinus", () => EditorFontSize -= 1);
         Register(CommandIds.ZoomReset, "View", "Reset Zoom", "Ctrl+D0", () => EditorFontSize = UserSettings.DefaultEditorFontSize);
         Register(CommandIds.TriggerSuggest, "Editor", "Trigger Suggest", "Ctrl+Space", Completion.Trigger);
+        Register(CommandIds.Fold, "Editor", "Fold", "Ctrl+Shift+OemOpenBrackets", () => Editors.ActiveEditor?.FoldAtCaret());
+        Register(CommandIds.Unfold, "Editor", "Unfold", "Ctrl+Shift+OemCloseBrackets", () => Editors.ActiveEditor?.UnfoldAtCaret());
+        Register(CommandIds.FoldAll, "Editor", "Fold All", "Ctrl+K Ctrl+D0", () => Editors.ActiveEditor?.FoldAll());
+        Register(CommandIds.UnfoldAll, "Editor", "Unfold All", "Ctrl+K Ctrl+J", () => Editors.ActiveEditor?.UnfoldAll());
         Register(CommandIds.TriggerParameterHints, "Editor", "Trigger Parameter Hints", "Ctrl+Shift+Space", SignatureHelp.Trigger);
         Register(CommandIds.GoToDefinition, "Go", "Go to Definition", "F12", GoToDefinitionAsync);
         Register(CommandIds.FindReferences, "Go", "Find All References", "Shift+F12", FindReferencesAsync);

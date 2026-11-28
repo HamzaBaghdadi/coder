@@ -31,6 +31,7 @@ public sealed class EditorTabViewModel : TabViewModel
         Document.ModifiedChanged += (_, _) => OnPropertyChanged(nameof(IsDirty));
         Document.Changed += (_, change) =>
         {
+            Folding.OnTextChanged(change);
             MapInlayHints(change);
             MapSymbolScopes(change);
             if (_diagnostics.Count > 0)
@@ -38,6 +39,98 @@ public sealed class EditorTabViewModel : TabViewModel
                 _diagnostics = _diagnostics.Select(marker => marker.Map(change)).ToList();
             }
         };
+
+        // Up/Down step over folded blocks; a caret that lands inside one by other means (a search, Go to
+        // Definition, an undo) opens it.
+        Editor.LineStep = (line, direction) => Folding.Step(line, direction);
+        Editor.SelectionChanged += (_, _) =>
+        {
+            if (Folding.HasFolds)
+            {
+                foreach (var selection in Editor.Selections.All)
+                {
+                    Folding.Reveal(Document.GetLineOfOffset(selection.Active));
+                }
+            }
+        };
+    }
+
+    /// <summary>This document's folded regions (kept while the tab is open).</summary>
+    public FoldingState Folding { get; } = new();
+
+    private IReadOnlyList<ScopeRange> _foldRanges = [];
+    private int _foldRangesVersion = -1;
+
+    /// <summary>The blocks this document can fold (by brackets, or by indentation), computed again after edits.</summary>
+    public IReadOnlyList<ScopeRange> FoldRanges()
+    {
+        if (_foldRangesVersion != Document.Version)
+        {
+            _foldRanges = StickyScopes.FoldRanges(Document, Language, Editor.Options.TabSize);
+            _foldRangesVersion = Document.Version;
+        }
+
+        return _foldRanges;
+    }
+
+    /// <summary>Folds the innermost open block around the caret; a caret inside it moves to its first line.</summary>
+    public void FoldAtCaret()
+    {
+        var line = Editor.CaretPosition.Line;
+        if (FoldRanges().Where(r => r.StartLine <= line && line <= r.EndLine && !Folding.IsCollapsed(r.StartLine))
+                .OrderBy(r => r.EndLine - r.StartLine).Cast<ScopeRange?>().FirstOrDefault() is { } range)
+        {
+            Fold(range);
+        }
+    }
+
+    /// <summary>Unfolds the folded block the caret is on (its first line), or the innermost folded one around it.</summary>
+    public void UnfoldAtCaret()
+    {
+        var line = Editor.CaretPosition.Line;
+        if (Folding.Collapsed.Where(r => r.StartLine <= line && line <= r.EndLine).OrderBy(r => r.EndLine - r.StartLine).Cast<ScopeRange?>().FirstOrDefault() is { } range)
+        {
+            Folding.Expand(range.StartLine);
+        }
+    }
+
+    /// <summary>Folds every block (the caret moves to the first line of the outermost block it's in).</summary>
+    public void FoldAll()
+    {
+        var ranges = FoldRanges();
+        var line = Editor.CaretPosition.Line;
+        if (ranges.Where(r => r.StartLine < line && line <= r.EndLine).OrderBy(r => r.StartLine).Cast<ScopeRange?>().FirstOrDefault() is { } outermost)
+        {
+            Editor.SetCaret(Document.GetLineEnd(outermost.StartLine));
+        }
+
+        Folding.CollapseAll(ranges);
+    }
+
+    public void UnfoldAll() => Folding.ExpandAll();
+
+    /// <summary>Folds or unfolds a block (a chevron click).</summary>
+    public void ToggleFold(ScopeRange range)
+    {
+        if (Folding.IsCollapsed(range.StartLine))
+        {
+            Folding.Expand(range.StartLine);
+        }
+        else
+        {
+            Fold(range);
+        }
+    }
+
+    private void Fold(ScopeRange range)
+    {
+        var line = Editor.CaretPosition.Line;
+        if (line > range.StartLine && line <= range.EndLine)
+        {
+            Editor.SetCaret(Document.GetLineEnd(range.StartLine)); // first, or the caret would open it again
+        }
+
+        Folding.Collapse(range);
     }
 
     /// <summary>Raised when a language server sends new diagnostics for this document.</summary>

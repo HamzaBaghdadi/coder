@@ -31,6 +31,23 @@ public static class StickyScopes
         return new ScopeIndex(symbolScopes is { Count: > 0 } ? [.. found, .. symbolScopes] : found);
     }
 
+    /// <summary>
+    /// The regions a document can fold, like VS Code's: blocks between brackets (folded from the line of the
+    /// opening bracket, so a lone "{" keeps its own chevron), or by indentation for other languages. Sorted,
+    /// one per first line (the widest).
+    /// </summary>
+    public static IReadOnlyList<ScopeRange> FoldRanges(TextDocument document, LanguageDefinition language, int tabSize)
+    {
+        var lines = new string[document.LineCount];
+        for (var i = 0; i < lines.Length; i++)
+        {
+            lines[i] = document.GetLineText(i);
+        }
+
+        var found = UsesBraces(language) ? FromBrackets(lines, language, liftHeaders: false) : FromIndentation(lines, tabSize);
+        return [.. found.GroupBy(r => r.StartLine).Select(g => g.MaxBy(r => r.EndLine)).OrderBy(r => r.StartLine)];
+    }
+
     /// <summary>Whether <paramref name="language"/>'s blocks are delimited by braces (rather than indentation or tags).</summary>
     public static bool UsesBraces(LanguageDefinition language) =>
         !language.MarkupTags && language.Brackets.Contains('{', StringComparison.Ordinal) && !IndentedLanguages.Contains(language.Id);
@@ -71,7 +88,7 @@ public static class StickyScopes
     }
 
     /// <summary>Blocks between matching <c>{ }</c> and <c>[ ]</c>, ignoring brackets in strings and comments.</summary>
-    public static IReadOnlyList<ScopeRange> FromBrackets(IReadOnlyList<string> lines, LanguageDefinition language)
+    public static IReadOnlyList<ScopeRange> FromBrackets(IReadOnlyList<string> lines, LanguageDefinition language, bool liftHeaders = true)
     {
         var result = new List<ScopeRange>();
         var open = new Stack<(char Bracket, int Line)>();
@@ -156,7 +173,7 @@ public static class StickyScopes
 
             // "{" alone on its line (Allman style, as in C#): the header is the line above it.
             var header = openLine;
-            if (lines[openLine].AsSpan().Trim() is "{" or "[" && PreviousNonBlank(lines, openLine) is { } above
+            if (liftHeaders && lines[openLine].AsSpan().Trim() is "{" or "[" && PreviousNonBlank(lines, openLine) is { } above
                 && lines[above].AsSpan().TrimEnd() is var previous && previous.Length > 0 && previous[^1] is not (';' or '{' or '}' or ',' or '[' or '('))
             {
                 header = above;

@@ -80,6 +80,11 @@ public sealed class TextDocument
     /// </summary>
     public SelectionSet Edit(EditKind kind, SelectionSet selectionBefore, Func<TextEdit, SelectionSet> edit)
     {
+        if (IsReadOnly)
+        {
+            return selectionBefore; // shown only (a response); whoever owns it lifts this to change it
+        }
+
         var wasModified = IsModified;
         var group = _history.GroupFor(kind, selectionBefore);
         var selectionAfter = edit(new TextEdit(this, group));
@@ -89,12 +94,20 @@ public sealed class TextDocument
         return selectionAfter;
     }
 
+    /// <summary>Refuses edits (typing, pasting, undo): the text is only shown, as in a response viewer.</summary>
+    public bool IsReadOnly { get; set; }
+
     /// <summary>Stops the latest undo step from absorbing further typing.</summary>
     public void SealUndoStep() => _history.SealLast();
 
     /// <summary>Undoes one step and returns the selections to restore, or null if there was nothing to undo.</summary>
     public SelectionSet? Undo()
     {
+        if (IsReadOnly)
+        {
+            return null;
+        }
+
         var wasModified = IsModified;
         var group = _history.PopUndo();
         if (group is null)
@@ -113,6 +126,11 @@ public sealed class TextDocument
 
     public SelectionSet? Redo()
     {
+        if (IsReadOnly)
+        {
+            return null;
+        }
+
         var wasModified = IsModified;
         var group = _history.PopRedo();
         if (group is null)
