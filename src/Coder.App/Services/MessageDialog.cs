@@ -132,6 +132,9 @@ internal sealed class MessageDialog<T> : Border
         Close(_cancelResult);
     }
 
+    /// <summary>Closes the dialog as if dismissed (the question was withdrawn), returning <c>cancelResult</c>.</summary>
+    public void Dismiss() => Close(_cancelResult);
+
     private void Close(T result)
     {
         if (_layer is not { } layer)

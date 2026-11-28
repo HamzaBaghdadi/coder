@@ -11,4 +11,16 @@ public sealed record TerminalRequest(string Name, string? CommandLine, string? W
 
     /// <summary>Text shown on the terminal's screen before the shell's output (instructions, a notice).</summary>
     public string? Message { get; init; }
+
+    /// <summary>
+    /// A program to run in the terminal instead of the shell, with <see cref="Arguments"/> passed exactly
+    /// (no shell quoting); <see cref="CommandLine"/> is then ignored. The terminal ends when the program does.
+    /// </summary>
+    public string? Program { get; init; }
+
+    /// <summary>The arguments for <see cref="Program"/>.</summary>
+    public IReadOnlyList<string> Arguments { get; init; } = [];
+
+    /// <summary>The command line that starts <see cref="Program"/>, or null when the request is for a shell.</summary>
+    public string? ProgramCommandLine => Program is { } program ? Coder.Core.Terminal.CommandLines.Windows(program, Arguments) : null;
 }

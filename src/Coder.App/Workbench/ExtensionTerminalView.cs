@@ -146,7 +146,8 @@ public sealed class ExtensionTerminalView : Panel
             var (columns, rows) = Bounds.Width > 0 ? _pane.View.GridSize : (80, 24);
             var folder = request.WorkingDirectory is { } cwd && Directory.Exists(cwd) ? cwd : _workbench.TerminalWorkingDirectory;
             var profile = _workbench.DefaultShellProfile;
-            session = TerminalSession.Start(folder, columns, rows, profile is null ? null : ShellIntegration.CommandLine(profile), request.Environment);
+            var commandLine = request.ProgramCommandLine ?? (profile is null ? null : ShellIntegration.CommandLine(profile));
+            session = TerminalSession.Start(folder, columns, rows, commandLine, request.Environment);
         }
         catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or IOException or PlatformNotSupportedException)
         {
@@ -172,7 +173,7 @@ public sealed class ExtensionTerminalView : Panel
         _terminalArea.IsVisible = true;
         _status.IsVisible = false;
         previous?.Dispose();
-        if (request.CommandLine is { Length: > 0 } command)
+        if (request.Program is null && request.CommandLine is { Length: > 0 } command)
         {
             session.Write(command + "\r");
         }

@@ -279,7 +279,7 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
 
         var trust = new Coder.Core.Extensions.ExtensionTrust(Path.Combine(_extensionStore.Folder, ".trust.json"));
         ExtensionHost = new Coder.Presentation.Extensions.ExtensionHost(_extensionStore, trust, _dialogs, Commands,
-            new Coder.Presentation.Extensions.EditorApi(this, _fileSystem), launcher, message => StatusBar.Message = message, SecondaryViews);
+            new Coder.Presentation.Extensions.EditorApi(this, _fileSystem, _dialogs), launcher, message => StatusBar.Message = message, SecondaryViews);
         SecondaryViews.CollectionChanged += (_, _) =>
         {
             if (ActiveSecondaryView is { } id && SecondaryViews.All(v => v.Id != id))

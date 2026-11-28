@@ -6,6 +6,7 @@ using Coder.Core.Files;
 using Coder.Core.Lsp;
 using Coder.Core.Text;
 using Coder.Presentation.Editors;
+using Coder.Presentation.Services;
 using Coder.Presentation.Workbench;
 
 namespace Coder.Presentation.Extensions;
@@ -13,21 +14,26 @@ namespace Coder.Presentation.Extensions;
 /// <summary>
 /// The Editor API extension programs call (documented in <c>tools/registry/EXTENSION-API.md</c>):
 /// folders, open editors and the selection, opening and saving files, a change for the user to accept
-/// in a diff, diagnostics, terminals and messages. Positions are zero-based lines and UTF-16 columns,
+/// in a diff, diagnostics, terminals (a shell, or a program run directly), messages and questions with buttons. Positions are zero-based lines and UTF-16 columns,
 /// like LSP. It also tells programs when the active editor, the selection or the folder change.
 /// Everything here runs on the UI thread (the host marshals requests).
 /// </summary>
 public sealed class EditorApi : IEditorApi, IDisposable
 {
     private static readonly TimeSpan SelectionDelay = TimeSpan.FromMilliseconds(100);
+    /// <summary>At most this many buttons in a <c>window/showMessageRequest</c> question.</summary>
+    public const int MaxActions = 4;
+
     private readonly WorkbenchViewModel _workbench;
+    private readonly IDialogService _dialogs;
     private readonly DocumentEditApplier _applier;
     private EditorTabViewModel? _tracked;
     private CancellationTokenSource? _selectionDelay;
 
-    public EditorApi(WorkbenchViewModel workbench, IFileSystem fileSystem)
+    public EditorApi(WorkbenchViewModel workbench, IFileSystem fileSystem, IDialogService dialogs)
     {
         _workbench = workbench;
+        _dialogs = dialogs;
         _applier = new DocumentEditApplier(workbench.Editors, fileSystem, changes => workbench.Languages.NotifyFilesChanged(changes));
         FileSystem = fileSystem;
         workbench.Editors.PropertyChanged += (_, e) =>
@@ -55,6 +61,7 @@ public sealed class EditorApi : IEditorApi, IDisposable
     [
         "workspace/folders", "editor/open", "editor/list", "editor/selection", "editor/text", "editor/save", "editor/isDirty",
         "diff/review", "diff/close", "diff/closeAll", "diagnostics/get", "terminal/create", "window/showMessage",
+        "window/showMessageRequest",
     ];
 
     public JsonObject InitializeParameters() => new()
@@ -129,14 +136,24 @@ public sealed class EditorApi : IEditorApi, IDisposable
                     throw new ArgumentException($"{view} isn't one of {extension.DisplayName}'s views (coder.views).");
                 }
 
+                var (program, arguments) = Program(p);
                 _workbench.OpenTerminal(
-                    new TerminalRequest(String(p, "name") ?? extension.DisplayName, String(p, "command"), String(p, "cwd"), environment) { View = view, Message = String(p, "message") },
+                    new TerminalRequest(String(p, "name") ?? extension.DisplayName, String(p, "command"), String(p, "cwd"), environment)
+                    {
+                        View = view,
+                        Message = String(p, "message"),
+                        Program = program,
+                        Arguments = arguments,
+                    },
                     replace: p.TryGetProperty("replace", out var replace) && replace.ValueKind == JsonValueKind.True);
                 return new JsonObject();
 
             case "window/showMessage":
                 _workbench.StatusBar.Message = String(p, "text") ?? string.Empty;
                 return new JsonObject();
+
+            case "window/showMessageRequest":
+                return await AskAsync(extension, p, cancellationToken);
 
             default:
                 throw new InvalidOperationException($"Unknown method {method}.");
@@ -204,6 +221,40 @@ public sealed class EditorApi : IEditorApi, IDisposable
 
         cancellationToken.ThrowIfCancellationRequested();
         return new JsonObject { ["accepted"] = accepted, ["text"] = accepted ? proposed : null };
+    }
+
+    /// <summary>
+    /// A question with buttons, shaped like LSP's <c>window/showMessageRequest</c>: <c>{message, detail?, actions?: [{title}]}</c>.
+    /// Returns the action picked (the same object), or null when dismissed. The first action is the default
+    /// button. The extension's name is shown with it, so the user knows who asks.
+    /// </summary>
+    private async Task<JsonNode?> AskAsync(InstalledExtension extension, JsonElement p, CancellationToken cancellationToken)
+    {
+        var message = String(p, "message") is { Length: > 0 } m ? m : throw new ArgumentException("window/showMessageRequest needs a \"message\".");
+        var actions = new List<JsonElement>();
+        if (p.TryGetProperty("actions", out var list) && list.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var action in list.EnumerateArray())
+            {
+                if (action.ValueKind != JsonValueKind.Object || String(action, "title") is not { Length: > 0 })
+                {
+                    throw new ArgumentException("Each action needs a \"title\".");
+                }
+
+                actions.Add(action);
+            }
+        }
+
+        if (actions.Count > MaxActions)
+        {
+            throw new ArgumentException($"At most {MaxActions} actions.");
+        }
+
+        var detail = String(p, "detail") is { Length: > 0 } d ? $"{d}\n\nFrom {extension.DisplayName}." : $"From {extension.DisplayName}.";
+        var titles = actions.Count > 0 ? actions.Select(a => String(a, "title")!).ToList() : ["OK"];
+        var picked = await _dialogs.ChooseAsync(message, detail, titles, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        return picked is { } index && index < actions.Count ? JsonNode.Parse(actions[index].GetRawText()) : null;
     }
 
     private async Task<int> CloseDiffsAsync(Func<DiffTabViewModel, bool> which)
@@ -311,6 +362,38 @@ public sealed class EditorApi : IEditorApi, IDisposable
     {
         static TextPosition Position(JsonElement p) => new(p.GetProperty("line").GetInt32(), p.GetProperty("character").GetInt32());
         return new TextRange(Position(range.GetProperty("start")), Position(range.GetProperty("end")));
+    }
+
+    /// <summary><c>program</c> and <c>args</c> of <c>terminal/create</c>: a program run directly, its arguments passed as given.</summary>
+    private static (string? Program, IReadOnlyList<string> Arguments) Program(JsonElement p)
+    {
+        if (String(p, "program") is not { } program)
+        {
+            return p.ValueKind == JsonValueKind.Object && p.TryGetProperty("args", out _) ? throw new ArgumentException("\"args\" needs a \"program\".") : (null, []);
+        }
+
+        if (program.Length == 0 || program.Contains('"', StringComparison.Ordinal))
+        {
+            throw new ArgumentException("\"program\" must be a program's name or path.");
+        }
+
+        if (System.IO.Path.IsPathRooted(program) && !File.Exists(program))
+        {
+            throw new FileNotFoundException($"{program} doesn't exist.");
+        }
+
+        var arguments = new List<string>();
+        if (p.TryGetProperty("args", out var args))
+        {
+            if (args.ValueKind != JsonValueKind.Array || args.EnumerateArray().Any(a => a.ValueKind != JsonValueKind.String))
+            {
+                throw new ArgumentException("\"args\" must be an array of strings.");
+            }
+
+            arguments.AddRange(args.EnumerateArray().Select(a => a.GetString()!));
+        }
+
+        return (program, arguments);
     }
 
     private static string Path(JsonElement p) =>

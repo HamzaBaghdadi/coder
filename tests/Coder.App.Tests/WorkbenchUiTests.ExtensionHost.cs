@@ -101,6 +101,33 @@ public sealed partial class WorkbenchUiTests
             await program.Call("window/showMessage", new JsonObject { ["text"] = "Helper says hi" });
             Assert.Equal("Helper says hi", workbench.StatusBar.Message);
 
+            // A program run directly in a terminal: its arguments pass as given, and "command" is ignored.
+            await program.Call("terminal/create", new JsonObject
+            {
+                ["name"] = "Tool",
+                ["command"] = "ignored",
+                ["program"] = "tool.exe",
+                ["args"] = new JsonArray("--flag", "two words", "say \"hi\""),
+            });
+            Assert.Equal(("tool.exe", "tool.exe --flag \"two words\" \"say \\\"hi\\\"\""), (terminal?.Program, terminal?.ProgramCommandLine));
+            await Assert.ThrowsAsync<LanguageServerException>(() => program.Call("terminal/create", new JsonObject { ["args"] = new JsonArray("x") }));
+            await Assert.ThrowsAsync<LanguageServerException>(() => program.Call("terminal/create", new JsonObject { ["program"] = Path.Combine(root, "missing.exe") }));
+
+            // A question with buttons: the action picked comes back as sent, with the extension named for the user.
+            dialogs.NextChoice = 1;
+            var answer = await program.Call("window/showMessageRequest", new JsonObject
+            {
+                ["message"] = "Install the helper tool?",
+                ["detail"] = "It takes a minute.",
+                ["actions"] = new JsonArray(new JsonObject { ["title"] = "Install" }, new JsonObject { ["title"] = "Not now", ["id"] = "later" }),
+            });
+            Assert.Equal(("Not now", "later"), (answer.GetProperty("title").GetString(), answer.GetProperty("id").GetString()));
+            Assert.Equal(("It takes a minute.\n\nFrom Acme Helper.", "Install,Not now"), (dialogs.Choices[^1].Detail, string.Join(',', dialogs.Choices[^1].Choices)));
+            dialogs.NextChoice = null;
+            var dismissed = await program.Call("window/showMessageRequest", new JsonObject { ["message"] = "Still there?", ["actions"] = new JsonArray(new JsonObject { ["title"] = "Yes" }) });
+            Assert.Equal(JsonValueKind.Null, dismissed.ValueKind);
+            await Assert.ThrowsAsync<LanguageServerException>(() => program.Call("window/showMessageRequest", new JsonObject { ["actions"] = new JsonArray() }));
+
             // Bad calls come back as errors, not crashes.
             await Assert.ThrowsAsync<LanguageServerException>(() => program.Call("editor/open", new JsonObject { ["path"] = "relative.txt" }));
 
@@ -429,6 +456,12 @@ public sealed partial class WorkbenchUiTests
         {
             Asked.Add(message);
             return Task.FromResult(answers[Math.Min(Asked.Count - 1, answers.Length - 1)]);
+        }
+
+        public Task<int?> ChooseAsync(string message, string detail, IReadOnlyList<string> choices, CancellationToken cancellationToken = default)
+        {
+            Asked.Add(message);
+            return Task.FromResult<int?>(null);
         }
     }
 }

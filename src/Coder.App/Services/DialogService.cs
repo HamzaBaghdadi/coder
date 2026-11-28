@@ -44,4 +44,16 @@ public sealed class DialogService(Func<Window> owner) : IDialogService
         new MessageDialog<bool>(message, detail,
             [new("Cancel", false), new(confirmLabel, true, IsPrimary: true)],
             cancelResult: false).ShowAsync(owner());
+
+    public async Task<int?> ChooseAsync(string message, string detail, IReadOnlyList<string> choices, CancellationToken cancellationToken = default)
+    {
+        // The first choice is the default; buttons read like the app's other dialogs, the default rightmost.
+        var dialog = new MessageDialog<int?>(message, detail,
+            [.. choices.Select((label, index) => new DialogChoice<int?>(label, index, IsPrimary: index == 0)).Reverse()],
+            cancelResult: null);
+        await using (cancellationToken.Register(() => Avalonia.Threading.Dispatcher.UIThread.Post(dialog.Dismiss)))
+        {
+            return await dialog.ShowAsync(owner());
+        }
+    }
 }
