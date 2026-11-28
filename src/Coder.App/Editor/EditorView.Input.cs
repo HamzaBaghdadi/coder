@@ -166,7 +166,9 @@ public sealed partial class EditorView
             return;
         }
 
-        Cursor = position.X < GutterWidth ? Cursor.Default : SwatchAt(position) is not null ? SwatchCursor : TextCursor;
+        Cursor = IsOverFoldControl(position) ? HandCursor
+            : position.X < GutterWidth ? Cursor.Default
+            : SwatchAt(position) is not null ? SwatchCursor : TextCursor;
         _pointer = position;
         TrackFoldHover(position);
         UpdateCtrlLink(position, e.KeyModifiers);

@@ -43,6 +43,8 @@ public sealed partial class WorkbenchUiTests
             window.MouseMove(At(view.FoldChevronCenter(9)));
             Render(window);
             Assert.True(view.IsGutterHovered);
+            Assert.True(view.IsOverFoldControl(view.FoldChevronCenter(9))); // a hand pointer over a chevron
+            Assert.False(view.IsOverFoldControl(view.FoldChevronCenter(10))); // not where nothing folds
             Save(window, "editor-folding-hover");
 
             // Clicking the method's chevron folds it: its closing "}" (line 33) moves up to the next row.

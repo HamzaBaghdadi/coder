@@ -221,6 +221,19 @@ public sealed partial class EditorView
         return false;
     }
 
+    /// <summary>Whether the point is on a fold chevron or a folded block's "⋯" (the pointer becomes a hand).</summary>
+    internal bool IsOverFoldControl(Point point)
+    {
+        if (_editor is null || _folding is null)
+        {
+            return false;
+        }
+
+        var line = LineAtY(point.Y);
+        return point.X >= FoldColumnLeft && point.X < GutterWidth && FoldRangeAt(line) is not null
+               || _folding.IsCollapsed(line) && FoldedMarkerBounds(line).Contains(point);
+    }
+
     /// <summary>The mouse over the gutter shows every chevron; the one under it is highlighted.</summary>
     private void TrackFoldHover(Point point)
     {
