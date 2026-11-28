@@ -14,6 +14,10 @@ public interface IDialogService
 
     Task<string?> PickFileAsync();
 
+    /// <summary>Picks files to open (several when <paramref name="multiple"/>); empty when cancelled.</summary>
+    async Task<IReadOnlyList<string>> PickFilesAsync(string title, bool multiple) =>
+        await PickFileAsync() is { } path ? [path] : [];
+
     Task<string?> PickSaveLocationAsync(string suggestedName);
 
     Task<UnsavedChangesChoice> ConfirmUnsavedChangesAsync(string fileName);

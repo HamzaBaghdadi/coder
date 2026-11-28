@@ -31,7 +31,8 @@ public sealed partial class WorkbenchUiTests
         {
             var store = new ExtensionStore(Path.Combine(root, "installed"), http);
             InstallProgramExtension(store.Folder);
-            var workbench = new WorkbenchViewModel(new LocalFileSystem(), new NoDialogs(), new MemorySettingsStore(), extensionStore: store);
+            var dialogs = new NoDialogs();
+            var workbench = new WorkbenchViewModel(new LocalFileSystem(), dialogs, new MemorySettingsStore(), extensionStore: store);
             var window = new MainWindow(workbench) { Width = 1280, Height = 800 };
             window.Show();
             var launcher = new FakeLauncher();
@@ -78,6 +79,36 @@ public sealed partial class WorkbenchUiTests
             var edit = await NextPanelEventAsync(program);
             Assert.Equal(("headers", "change"), (Read(edit).Id, Read(edit).Type));
             Assert.Equal(("h1", "value", "text/plain"), (edit.GetProperty("value").GetProperty("row").GetString(), edit.GetProperty("value").GetProperty("column").GetString(), edit.GetProperty("value").GetProperty("value").GetString()));
+
+            // A tree item's right-click menu, and a table's dropdown column.
+            await program.Call("panel/show", new JsonObject
+            {
+                ["panel"] = "helper.request",
+                ["key"] = "r1",
+                ["content"] = JsonNode.Parse("""
+                    { "type": "column", "children": [
+                      { "type": "tree", "id": "tree", "items": [{ "id": "req1", "label": "List users",
+                        "menu": [{ "id": "duplicate", "label": "Duplicate" }, { "label": "-" }, { "id": "delete", "label": "Delete", "danger": true }] }] },
+                      { "type": "table", "id": "form", "columns": [{ "id": "key", "label": "Key" },
+                        { "id": "kind", "label": "Type", "kind": "select", "options": [{ "value": "text", "label": "Text" }, { "value": "file", "label": "File" }] }],
+                        "rows": [{ "id": "f1", "cells": { "key": "avatar", "kind": "text" } }] } ] }
+                    """),
+            });
+            Dispatcher.UIThread.RunJobs();
+            var entries = panel.TreeMenuOf("tree", "List users");
+            Assert.Equal(["Duplicate", "Delete"], entries.Select(e => (string)e.Header!));
+            entries[1].RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
+            var menu = await NextPanelEventAsync(program);
+            Assert.Equal(("tree", "menu", "req1", "delete"), (Read(menu).Id, Read(menu).Type, menu.GetProperty("value").GetProperty("item").GetString(), menu.GetProperty("value").GetProperty("action").GetString()));
+            var kind = Assert.IsType<ComboBox>(panel.ControlFor("form/f1/kind"));
+            kind.SelectedIndex = 1;
+            var kindChange = await NextPanelEventAsync(program);
+            Assert.Equal(("kind", "file"), (kindChange.GetProperty("value").GetProperty("column").GetString(), kindChange.GetProperty("value").GetProperty("value").GetString()));
+
+            // The file dialog.
+            dialogs.PickedFiles = [@"C:\photos\me.png", @"C:\photos\you.png"];
+            var picked = await program.Call("window/showOpenDialog", new JsonObject { ["multiple"] = true });
+            Assert.Equal([@"C:\photos\me.png", @"C:\photos\you.png"], picked.GetProperty("paths").EnumerateArray().Select(p => p.GetString()));
 
             // A second key is a second tab; bad content is an error naming the node.
             await program.Call("panel/show", new JsonObject { ["panel"] = "helper.request", ["key"] = "r2", ["content"] = new JsonObject { ["type"] = "text", ["text"] = "Second" } });

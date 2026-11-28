@@ -625,6 +625,30 @@ public sealed class ExtensionPanelView : Border
         }
 
         var text = value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ? string.Empty : value.GetRawText();
+        if (column.Kind == "select")
+        {
+            var combo = Keep(id, () =>
+            {
+                var made = new ComboBox { MinWidth = 70, Margin = new Thickness(0, 1, 4, 1), VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Stretch };
+                made.SelectionChanged += (_, _) =>
+                {
+                    if (made.Tag is not true && made.SelectedItem is ComboBoxItem { Tag: string chosen })
+                    {
+                        changed(chosen);
+                    }
+                };
+                return made;
+            });
+            combo.Tag = true; // filling it isn't the user choosing
+            var items = column.Options.Select(o => new ComboBoxItem { Tag = o.Value, Content = o.Label }).ToList();
+            combo.ItemsSource = items;
+            combo.SelectedItem = items.FirstOrDefault(i => (string)i.Tag! == text) ?? (items.Count > 0 ? items[0] : null);
+            combo.IsEnabled = column.Editable;
+            combo.Tag = null;
+            AutomationProperties.SetName(combo, $"{column.Label} {rowId}".Trim());
+            return combo;
+        }
+
         if (!column.Editable)
         {
             return new SelectableTextBlock { Text = text, FontFamily = Typography.Code, FontSize = Typography.SmallSize, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 4), TextWrapping = TextWrapping.Wrap };
@@ -724,6 +748,10 @@ public sealed class ExtensionPanelView : Border
                 Send(tree.Id!, "select", new JsonObject { ["item"] = id });
             };
             row.DoubleTapped += (_, _) => Send(tree.Id!, "activate", new JsonObject { ["item"] = id });
+            if (item.Menu.Count > 0)
+            {
+                row.ContextMenu = TreeMenu(tree.Id!, id, item.Menu);
+            }
             list.Children.Add(row);
             if (hasChildren && expanded)
             {
@@ -731,6 +759,39 @@ public sealed class ExtensionPanelView : Border
             }
         }
     }
+
+    /// <summary>A tree item's right-click menu; choosing an entry reports <c>menu</c> with the item and the entry's id.</summary>
+    private ContextMenu TreeMenu(string treeId, string itemId, IReadOnlyList<PanelMenuItem> entries)
+    {
+        var menu = new ContextMenu();
+        foreach (var entry in entries)
+        {
+            if (entry.Label == "-")
+            {
+                menu.Items.Add(new Separator());
+                continue;
+            }
+
+            var menuItem = new MenuItem { Header = entry.Label };
+            if (entry.Danger)
+            {
+                menuItem.Foreground = Palette.Danger;
+            }
+
+            var action = entry.Id;
+            menuItem.Click += (_, _) => Send(treeId, "menu", new JsonObject { ["item"] = itemId, ["action"] = action });
+            menu.Items.Add(menuItem);
+        }
+
+        return menu;
+    }
+
+    /// <summary>For tests: the menu entries of a tree row (its label), as shown.</summary>
+    internal IReadOnlyList<MenuItem> TreeMenuOf(string treeId, string label) =>
+        _controls.GetValueOrDefault(treeId) is StackPanel list
+            && list.Children.OfType<FlatButton>().FirstOrDefault(r => AutomationProperties.GetName(r) == label)?.ContextMenu is { } menu
+            ? [.. menu.Items.OfType<MenuItem>()]
+            : [];
 
     // Code -------------------------------------------------------------------------------------------
 

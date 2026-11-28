@@ -770,6 +770,11 @@ public sealed partial class WorkbenchUiTests
             return Task.FromResult(true);
         }
 
+        /// <summary>What <see cref="PickFilesAsync"/> returns (the user's pick).</summary>
+        public IReadOnlyList<string> PickedFiles { get; set; } = [];
+
+        public Task<IReadOnlyList<string>> PickFilesAsync(string title, bool multiple) => Task.FromResult(PickedFiles);
+
         /// <summary>The choice to pick in the next <see cref="ChooseAsync"/> (null: dismiss it).</summary>
         public int? NextChoice { get; set; }
 

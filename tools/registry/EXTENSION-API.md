@@ -85,6 +85,7 @@ lines and UTF-16 columns (as in LSP). Errors come back as JSON-RPC errors with a
 | `terminal/create` | `{name, command?, program?, args?, cwd?, env?, view?, message?, replace?}` | `{}`. Opens a terminal named `name` in the default shell, with `env` added, and types `command` into it: in the terminal panel, or in one of the extension's own side-bar views (`view`), which it then shows. A view that already runs a terminal is only shown, unless `replace` is true. `message` is printed on the terminal's screen first. With `program` (0.5.0+), see [Running a program in a terminal](#running-a-program-in-a-terminal). |
 | `window/showMessage` | `{text}` | `{}`. Shown in the status bar. |
 | `window/showMessageRequest` | `{message, detail?, actions?: [{title, ...}]}` | The action the user picked (the object you sent, extra fields included), or `null` when they dismissed it. 0.5.0+. See [Asking the user](#asking-the-user). |
+| `window/showOpenDialog` | `{title?, multiple?}` | `{paths: [path]}`: files the user picked to open (empty when they cancelled). 0.5.0+. |
 | `editor/setDecorations` | `{path, decorations: [{line, text, kind?}]}` | `{}`. 0.5.0+. Text after the end of lines (zero-based `line`), in faint italics; `kind` (`error`, `warning`, `information`, `hint`) colors it like a diagnostic, on a light tint. Replaces this extension's decorations in that file (an empty array clears them); other extensions' stay, and where two decorate a line the more severe shows. Up to 10,000 per file, 500 characters each. They're cleared when the program stops. |
 | `editor/clearDecorations` | none | `{}`. 0.5.0+. Removes all of this extension's decorations. |
 | `window/log` | `{text}` | notification; ignored for now. |
@@ -211,8 +212,8 @@ left in its row or column).
 | `select` | `value`, `options: [{value, label?, color?}]` | `change` (value) |
 | `checkbox` | `checked`, `label` | `change` (bool) |
 | `tabs` | `selected`, `items: [{id, label, badge?, content}]` | `select` (tab id) |
-| `table` | `columns: [{id, label, kind (text/checkbox), editable (true), width?}]`, `rows: [{id, cells: {column: value}}]`, `canAdd`, `canRemove` | `change` `{row, column, value}`, `add` `{column, value}` (typing in the empty last row; send the row back and typing continues in it), `remove` `{row}` |
-| `tree` | `items: [{id, label, detail?, badge?, expanded?, children?}]`, `selected` | `select` `{item}`, `activate` `{item}` (double-click) |
+| `table` | `columns: [{id, label, kind (text/checkbox/select), editable (true), width?, options? (select)}]`, `rows: [{id, cells: {column: value}}]`, `canAdd`, `canRemove` | `change` `{row, column, value}`, `add` `{column, value}` (typing in the empty last row; send the row back and typing continues in it), `remove` `{row}` |
+| `tree` | `items: [{id, label, detail?, badge?, expanded?, menu?, children?}]`, `selected`; `menu: [{id, label, danger?}]` is the item's right-click menu (a `"-"` label is a separator) | `select` `{item}`, `activate` `{item}` (double-click), `menu` `{item, action}` |
 | `code` | `value`, `language` (`json`, `xml`, `html`, …), `readOnly`, `minHeight` | `change` (text) unless read-only |
 | `divider`, `spacer` | | |
 

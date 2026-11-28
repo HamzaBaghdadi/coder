@@ -19,6 +19,12 @@ public sealed class DialogService(Func<Window> owner) : IDialogService
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }
 
+    public async Task<IReadOnlyList<string>> PickFilesAsync(string title, bool multiple)
+    {
+        var files = await owner().StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = title, AllowMultiple = multiple });
+        return [.. files.Select(f => f.TryGetLocalPath()).OfType<string>()];
+    }
+
     public async Task<string?> PickSaveLocationAsync(string suggestedName)
     {
         var file = await owner().StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions

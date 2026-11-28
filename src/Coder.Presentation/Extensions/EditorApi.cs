@@ -65,7 +65,7 @@ public sealed class EditorApi : IEditorApi, IDisposable
         "workspace/folders", "editor/open", "editor/list", "editor/selection", "editor/text", "editor/save", "editor/isDirty",
         "diff/review", "diff/close", "diff/closeAll", "diagnostics/get", "terminal/create", "window/showMessage",
         "window/showMessageRequest", "editor/setDecorations", "editor/clearDecorations",
-        "panel/show", "panel/close",
+        "panel/show", "panel/close", "window/showOpenDialog",
     ];
 
     /// <summary>Something only one program hears (an event in its panel).</summary>
@@ -186,6 +186,12 @@ public sealed class EditorApi : IEditorApi, IDisposable
 
             case "panel/close":
                 return new JsonObject { ["closed"] = await ClosePanelAsync(extension, p) };
+
+            case "window/showOpenDialog":
+                var picked = await _dialogs.PickFilesAsync(
+                    String(p, "title") ?? $"{extension.DisplayName}: choose a file",
+                    p.ValueKind == JsonValueKind.Object && p.TryGetProperty("multiple", out var multiple) && multiple.ValueKind == JsonValueKind.True);
+                return new JsonObject { ["paths"] = new JsonArray([.. picked.Select(path => (JsonNode)path)]) };
 
             default:
                 throw new InvalidOperationException($"Unknown method {method}.");

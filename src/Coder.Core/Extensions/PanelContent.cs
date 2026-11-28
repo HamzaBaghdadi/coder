@@ -90,8 +90,11 @@ public sealed record PanelTable(IReadOnlyList<PanelColumn> Columns, IReadOnlyLis
     public bool CanRemove { get; init; }
 }
 
-/// <param name="Kind"><c>text</c> or <c>checkbox</c>.</param>
-public sealed record PanelColumn(string Id, string Label, string Kind, bool Editable, double? Width);
+/// <param name="Kind"><c>text</c>, <c>checkbox</c> or <c>select</c> (a dropdown of <see cref="Options"/>).</param>
+public sealed record PanelColumn(string Id, string Label, string Kind, bool Editable, double? Width)
+{
+    public IReadOnlyList<PanelOption> Options { get; init; } = [];
+}
 
 /// <param name="Cells">Column id to value: a string, or a bool for a check-box column.</param>
 public sealed record PanelRow(string Id, IReadOnlyDictionary<string, JsonElement> Cells);
@@ -104,12 +107,18 @@ public sealed record PanelTree(IReadOnlyList<PanelTreeItem> Items) : PanelNode
 
 public sealed record PanelTreeItem(string Id, string Label, IReadOnlyList<PanelTreeItem> Children)
 {
+    /// <summary>Right-click menu: choosing an entry reports <c>menu</c> (<c>{item, action}</c>).</summary>
+    public IReadOnlyList<PanelMenuItem> Menu { get; init; } = [];
+
     public string? Detail { get; init; }
 
     public PanelBadge? Badge { get; init; }
 
     public bool Expanded { get; init; }
 }
+
+/// <summary>An entry in a right-click menu; <see cref="Danger"/> shows it in red (Delete). A <c>-</c> label is a separator.</summary>
+public sealed record PanelMenuItem(string Id, string Label, bool Danger);
 
 /// <summary>Code in Coder's own editor (highlighting, find, folding). Reports <c>change</c> (the text) unless read-only.</summary>
 public sealed record PanelCode(string Value, string Language) : PanelNode
@@ -222,9 +231,12 @@ public static class PanelContent
             columns.Add(new PanelColumn(
                 Str(column, "id") ?? throw new ArgumentException($"{at}: a column needs an \"id\"."),
                 Str(column, "label") ?? string.Empty,
-                OneOf(column, "kind", ["text", "checkbox"], at) ?? "text",
+                OneOf(column, "kind", ["text", "checkbox", "select"], at) ?? "text",
                 !column.TryGetProperty("editable", out var editable) || editable.ValueKind != JsonValueKind.False,
-                Num(column, "width")));
+                Num(column, "width"))
+            {
+                Options = Str(column, "kind") == "select" ? Options(column, at) : [],
+            });
         }
 
         var rows = new List<PanelRow>();
@@ -258,6 +270,10 @@ public static class PanelContent
                 Detail = Str(item, "detail"),
                 Badge = item.TryGetProperty("badge", out var badge) && badge.ValueKind == JsonValueKind.Object ? Badge(badge, $"{at}.badge") : null,
                 Expanded = Bool(item, "expanded"),
+                Menu = [.. Array(item, "menu", at, required: false).Select((m, n) => new PanelMenuItem(
+                    Str(m, "id") ?? (Str(m, "label") == "-" ? $"-{n}" : throw new ArgumentException($"{at}.menu[{n}]: a menu entry needs an \"id\"."))!,
+                    Str(m, "label") ?? throw new ArgumentException($"{at}.menu[{n}]: a menu entry needs a \"label\"."),
+                    Bool(m, "danger")))],
             });
         }
 
