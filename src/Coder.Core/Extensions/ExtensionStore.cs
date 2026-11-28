@@ -302,12 +302,16 @@ public sealed class ExtensionStore(string folder, HttpClient http)
                         && coderSection.TryGetProperty("views", out var viewList) && viewList.ValueKind == JsonValueKind.Array
                 ? viewList.EnumerateArray()
                     .Where(v => String(v, "id") is { Length: > 0 } && String(v, "title") is { Length: > 0 } && (String(v, "location") ?? "secondarySidebar") == "secondarySidebar")
-                    .Select(v => new ExtensionView(String(v, "id")!, String(v, "title")!, String(v, "command")))
+                    .Select(v => new ExtensionView(String(v, "id")!, String(v, "title")!, String(v, "command")) { Type = String(v, "type") == "panel" ? "panel" : "terminal" })
                     .ToList()
                 : [];
             var programs = root.TryGetProperty("coder", out var coder) && coder.ValueKind == JsonValueKind.Object
                            && coder.TryGetProperty("program", out var program) && program.ValueKind == JsonValueKind.Object
                 ? program.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String).ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.OrdinalIgnoreCase)
+                : [];
+            var panels = root.TryGetProperty("coder", out var panelSection) && panelSection.ValueKind == JsonValueKind.Object
+                         && panelSection.TryGetProperty("panels", out var panelList) && panelList.ValueKind == JsonValueKind.Array
+                ? panelList.EnumerateArray().Where(p => String(p, "id") is { Length: > 0 }).Select(p => new ExtensionPanel(String(p, "id")!, String(p, "title") ?? String(p, "id")!)).ToList()
                 : [];
             var ownProgram = programs.TryGetValue(Platform.RuntimeId, out var ownRelative) ? Inside(directory, ownRelative) : null;
             var agents = root.TryGetProperty("coder", out var agentSection) && agentSection.ValueKind == JsonValueKind.Object
@@ -341,6 +345,7 @@ public sealed class ExtensionStore(string folder, HttpClient http)
                 Commands = Commands(contributes, display is null || display.StartsWith('%') ? name : display),
                 Views = views,
                 Agents = agents,
+                Panels = panels,
                 Source = TextFile(directory, SourceFile),
                 PackageSha256 = TextFile(directory, Sha256File),
             };

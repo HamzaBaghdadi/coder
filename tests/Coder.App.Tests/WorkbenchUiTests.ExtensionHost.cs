@@ -304,7 +304,8 @@ public sealed partial class WorkbenchUiTests
         File.WriteAllText(Path.Combine(folder, "package.json"), $$"""
             { "publisher": "acme", "name": "helper", "version": "1.0.0", "displayName": "Acme Helper",
               "coder": { "program": { "{{Platform.RuntimeId}}": "bin/helper.exe" }, "views": [ { "id": "helper.view", "title": "Helper View", "location": "secondarySidebar", "command": "helper.showView" } ],
-                         "agents": [ { "id": "helper.agent", "name": "Helper Agent", "args": ["--acp"] } ] },
+                         "agents": [ { "id": "helper.agent", "name": "Helper Agent", "args": ["--acp"] } ],
+                         "panels": [ { "id": "helper.request", "title": "Request" } ] },
               "contributes": { "commands": [ { "command": "helper.hello", "title": "Say Hello", "category": "Helper" }, { "command": "helper.showView", "title": "Show View", "category": "Helper" } ] } }
             """);
     }
@@ -366,6 +367,8 @@ public sealed partial class WorkbenchUiTests
                 return null;
             });
             _connection.OnNotification("editor/selectionChanged", p => LastSelectionText = p.GetProperty("text").GetString());
+            _connection.OnNotification("panel/event", p => PanelEvents.Writer.TryWrite(p.Clone()));
+            _connection.OnNotification("panel/closed", p => PanelEvents.Writer.TryWrite(p.Clone()));
             _connection.Start();
         }
 
@@ -374,6 +377,9 @@ public sealed partial class WorkbenchUiTests
         public TaskCompletionSource<JsonElement> Initialized { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Channel<string> Commands { get; } = Channel.CreateUnbounded<string>();
+
+        /// <summary>panel/event and panel/closed notifications, in order.</summary>
+        public Channel<JsonElement> PanelEvents { get; } = Channel.CreateUnbounded<JsonElement>();
 
         public bool ShutdownRequested { get; private set; }
 

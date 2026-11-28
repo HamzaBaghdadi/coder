@@ -133,7 +133,7 @@ public sealed class EditorTabStrip : Border
                 {
                     tab is DiffTabViewModel ? new Icon(Icons.Diff, 14) { Foreground = Palette.TextSecondary }
                         : tab is Presentation.Settings.SettingsPageViewModel ? new Icon(Icons.Settings, 14) { Foreground = Palette.TextSecondary }
-                        : tab is Presentation.Extensions.ExtensionDetailsTabViewModel ? new Icon(Icons.Extensions, 14) { Foreground = Palette.TextSecondary }
+                        : tab is Presentation.Extensions.ExtensionDetailsTabViewModel or Presentation.Extensions.PanelTabViewModel ? new Icon(Icons.Extensions, 14) { Foreground = Palette.TextSecondary }
                         : tab is PreviewTabViewModel ? new Icon(Icons.Preview, 14) { Foreground = Palette.Accent }
                         : FileIcons.File(tab.FilePath ?? tab.Title, 15),
                     title,

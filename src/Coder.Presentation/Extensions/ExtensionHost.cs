@@ -36,6 +36,9 @@ public interface IEditorApi
     /// <summary>Something every program hears about (the selection moved, a folder opened): method and params.</summary>
     event EventHandler<(string Method, JsonNode? Parameters)>? Notification;
 
+    /// <summary>Something only one extension's program hears (an event in its panel): extension id, method, params.</summary>
+    event EventHandler<(string ExtensionId, string Method, JsonNode? Parameters)>? TargetedNotification;
+
     /// <summary>An extension's program stopped (or crashed): drop what it left on screen (its decorations).</summary>
     void Forget(InstalledExtension extension)
     {
@@ -92,6 +95,7 @@ public sealed class ExtensionHost : IAsyncDisposable
         store.BeforeRemoveAsync = StopAsync;
         store.Changed += (_, _) => Post(() => _ = RefreshAsync());
         api.Notification += (_, n) => Broadcast(n.Method, n.Parameters);
+        api.TargetedNotification += (_, n) => SendTo(n.ExtensionId, n.Method, n.Parameters);
         foreach (var extension in store.Installed())
         {
             RegisterCommands(extension); // in the palette at once; the programs wait for StartAsync
@@ -172,7 +176,10 @@ public sealed class ExtensionHost : IAsyncDisposable
         foreach (var view in extension.Views.Where(v => _views.All(existing => existing.Id != v.Id)))
         {
             _views.Add(new Workbench.ExtensionSideBarView(view.Id, view.Title, extension.Id,
-                () => view.Command is { } command ? RunCommandAsync(extension.Id, command) : Task.CompletedTask));
+                () => view.Command is { } command ? RunCommandAsync(extension.Id, command) : Task.CompletedTask)
+            {
+                Panel = view.Type == "panel" ? new PanelSurface(e => SendPanelEvent(extension.Id, view.Id, string.Empty, e)) : null,
+            });
         }
 
         // Its agents, for this platform; starting one asks the same consent as its program.
@@ -426,6 +433,18 @@ public sealed class ExtensionHost : IAsyncDisposable
             running.Connection.Notify(method, parameters?.DeepClone());
         }
     }
+
+    /// <summary>Tells one extension's program something (an event in its panel); nothing when it isn't running.</summary>
+    private void SendTo(string extensionId, string method, JsonNode? parameters)
+    {
+        if (_running.TryGetValue(extensionId, out var running))
+        {
+            running.Connection.Notify(method, parameters);
+        }
+    }
+
+    private void SendPanelEvent(string extensionId, string panel, string key, PanelEvent e) =>
+        SendTo(extensionId, "panel/event", new JsonObject { ["panel"] = panel, ["key"] = key, ["id"] = e.Id, ["type"] = e.Type, ["value"] = e.Value?.DeepClone() });
 
     // Threads -----------------------------------------------------------------------------------
 

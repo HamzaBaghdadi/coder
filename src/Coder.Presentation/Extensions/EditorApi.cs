@@ -65,7 +65,11 @@ public sealed class EditorApi : IEditorApi, IDisposable
         "workspace/folders", "editor/open", "editor/list", "editor/selection", "editor/text", "editor/save", "editor/isDirty",
         "diff/review", "diff/close", "diff/closeAll", "diagnostics/get", "terminal/create", "window/showMessage",
         "window/showMessageRequest", "editor/setDecorations", "editor/clearDecorations",
+        "panel/show", "panel/close",
     ];
+
+    /// <summary>Something only one program hears (an event in its panel).</summary>
+    public event EventHandler<(string ExtensionId, string Method, JsonNode? Parameters)>? TargetedNotification;
 
     /// <summary>At most this many decorations in one <c>editor/setDecorations</c>.</summary>
     public const int MaxDecorations = 10_000;
@@ -176,6 +180,13 @@ public sealed class EditorApi : IEditorApi, IDisposable
                 _workbench.Decorations.Clear(extension.Id);
                 return new JsonObject();
 
+            case "panel/show":
+                ShowPanel(extension, p);
+                return new JsonObject();
+
+            case "panel/close":
+                return new JsonObject { ["closed"] = await ClosePanelAsync(extension, p) };
+
             default:
                 throw new InvalidOperationException($"Unknown method {method}.");
         }
@@ -276,6 +287,74 @@ public sealed class EditorApi : IEditorApi, IDisposable
         var picked = await _dialogs.ChooseAsync(message, detail, titles, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         return picked is { } index && index < actions.Count ? JsonNode.Parse(actions[index].GetRawText()) : null;
+    }
+
+    /// <summary>
+    /// Shows (or updates) a panel: one of the extension's <c>coder.panels</c> as an editor tab (one per <c>key</c>),
+    /// or one of its <c>"type": "panel"</c> views in the side bar. A new tab is shown; an existing one only with
+    /// <c>reveal</c>.
+    /// </summary>
+    private void ShowPanel(InstalledExtension extension, JsonElement p)
+    {
+        var panelId = String(p, "panel") ?? throw new ArgumentException("panel/show needs \"panel\" (one of coder.panels, or a panel view).");
+        var key = String(p, "key") ?? string.Empty;
+        var content = p.TryGetProperty("content", out var c) ? PanelContent.Parse(c) : throw new ArgumentException("panel/show needs \"content\".");
+        var reveal = p.TryGetProperty("reveal", out var r) && r.ValueKind == JsonValueKind.True;
+        var title = String(p, "title");
+
+        if (extension.Panels.FirstOrDefault(declared => declared.Id == panelId) is { } panel)
+        {
+            var tab = _workbench.Editors.Tabs.OfType<PanelTabViewModel>().FirstOrDefault(t => t.ExtensionId == extension.Id && t.PanelId == panelId && t.Key == key);
+            if (tab is null)
+            {
+                var id = extension.Id;
+                tab = new PanelTabViewModel(id, extension.DisplayName, panelId, key, title ?? panel.Title,
+                    e => TargetedNotification?.Invoke(this, (id, "panel/event", new JsonObject { ["panel"] = panelId, ["key"] = key, ["id"] = e.Id, ["type"] = e.Type, ["value"] = e.Value?.DeepClone() })),
+                    _ => TargetedNotification?.Invoke(this, (id, "panel/closed", new JsonObject { ["panel"] = panelId, ["key"] = key })));
+                tab.Surface.Content = content;
+                _workbench.Editors.Show(tab);
+                return;
+            }
+
+            if (title is not null)
+            {
+                tab.SetTitle(title);
+            }
+
+            tab.Surface.Content = content;
+            if (reveal)
+            {
+                _workbench.Editors.Show(tab);
+            }
+
+            return;
+        }
+
+        if (extension.Views.Any(v => v.Id == panelId && v.Type == "panel") && _workbench.SecondaryViews.FirstOrDefault(v => v.Id == panelId) is { Panel: { } surface })
+        {
+            surface.Content = content;
+            if (reveal)
+            {
+                _workbench.ShowSecondaryView(panelId);
+            }
+
+            return;
+        }
+
+        throw new ArgumentException($"{panelId} isn't one of {extension.DisplayName}'s coder.panels or panel views.");
+    }
+
+    private async Task<bool> ClosePanelAsync(InstalledExtension extension, JsonElement p)
+    {
+        var panelId = String(p, "panel");
+        var key = String(p, "key") ?? string.Empty;
+        if (_workbench.Editors.Tabs.OfType<PanelTabViewModel>().FirstOrDefault(t => t.ExtensionId == extension.Id && t.PanelId == panelId && t.Key == key) is not { } tab)
+        {
+            return false;
+        }
+
+        await _workbench.Editors.CloseAsync(tab);
+        return true;
     }
 
     private async Task<int> CloseDiffsAsync(Func<DiffTabViewModel, bool> which)

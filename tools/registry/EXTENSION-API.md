@@ -168,3 +168,53 @@ in Coder unchanged.
   Coder closes.
 - An error whose code is `-32000` (ACP's `auth_required`), or whose message says to log in, is shown as "needs you to
   sign in".
+
+## Panels: native UI for extensions
+
+Coder 0.5.0+. An extension can show its own interface — forms, tables, trees, code — without a web view: its
+program describes the content as data and Coder draws it with its own controls, in the user's theme.
+
+```json
+"coder": {
+  "panels": [{ "id": "my.request", "title": "Request" }],
+  "views": [{ "id": "my.collections", "title": "Collections", "type": "panel", "command": "my.showCollections" }]
+}
+```
+
+- `coder.panels` open as **editor tabs**, one per `key` (a request's id, say).
+- A `coder.views` entry with `"type": "panel"` is a **side-bar tab** showing a panel instead of a terminal. Showing
+  it the first time runs its `command`: answer with `panel/show`.
+
+| Method | Params | Result |
+|---|---|---|
+| `panel/show` | `{panel, key?, title?, content, reveal?}` | `{}`. Opens the panel (a new tab is shown) or replaces its content. `reveal: true` also brings an existing one to the front. |
+| `panel/close` | `{panel, key?}` | `{closed}` |
+
+| Notification (Coder → program) | Params |
+|---|---|
+| `panel/event` | `{panel, key, id, type, value}`: what the user did with the node named `id`. |
+| `panel/closed` | `{panel, key}`: the user closed the tab. |
+
+**Content** is a tree of nodes, each `{ "type": …, … }`. Send the whole tree again whenever your state changes:
+Coder keeps the controls of nodes with the same `id`, so focus, the caret, text being typed, a split's position and
+a tree's open folders are kept. Interactive nodes need an `id`. Any node may have `"grow": true` (take the space
+left in its row or column).
+
+| Node | Fields | Events |
+|---|---|---|
+| `column`, `row` | `children`, `gap` (8), `padding`, `align` (`start`/`center`/`end`/`stretch`), `scroll` (column) | |
+| `split` | `orientation` (`horizontal`/`vertical`), `ratio` (0.5), `first`, `second` | the user drags it (kept by `id`) |
+| `text` | `text`, `style` (`title`, `heading`, `body`, `muted`, `code`, `success`, `warning`, `error`), `selectable` | |
+| `badge` | `text`, `color` (`green`, `blue`, `orange`, `red`, `purple`, `gray`) | |
+| `button` | `label`, `style` (`primary`, `secondary`, `ghost`), `disabled` | `click` |
+| `input` | `value`, `placeholder`, `monospace` | `change` (text, after a pause in typing), `submit` (Enter) |
+| `select` | `value`, `options: [{value, label?, color?}]` | `change` (value) |
+| `checkbox` | `checked`, `label` | `change` (bool) |
+| `tabs` | `selected`, `items: [{id, label, badge?, content}]` | `select` (tab id) |
+| `table` | `columns: [{id, label, kind (text/checkbox), editable (true), width?}]`, `rows: [{id, cells: {column: value}}]`, `canAdd`, `canRemove` | `change` `{row, column, value}`, `add` `{column, value}` (typing in the empty last row; send the row back and typing continues in it), `remove` `{row}` |
+| `tree` | `items: [{id, label, detail?, badge?, expanded?, children?}]`, `selected` | `select` `{item}`, `activate` `{item}` (double-click) |
+| `code` | `value`, `language` (`json`, `xml`, `html`, …), `readOnly`, `minHeight` | `change` (text) unless read-only |
+| `divider`, `spacer` | | |
+
+While the user types in an `input` (or table cell, or `code`), your next content doesn't overwrite what they're
+typing unless its `value` differs from the one you sent before. Limits: 20,000 nodes, nesting 32 deep.

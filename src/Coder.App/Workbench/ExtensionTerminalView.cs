@@ -66,6 +66,17 @@ public sealed class ExtensionTerminalView : Panel
         _terminalArea = new DockPanel { IsVisible = false, Children = { _banner.Dock(Dock.Top), _pane } };
         Children.Add(_status);
         Children.Add(_terminalArea);
+        if (view.Panel is { } surface)
+        {
+            // A panel view: Coder draws what the program sends (panel/show) instead of a terminal.
+            Panel = new ExtensionPanelView { Surface = surface, IsVisible = surface.Content is not null };
+            surface.PropertyChanged += (_, _) => Dispatcher.UIThread.Post(() =>
+            {
+                Panel.IsVisible = surface.Content is not null;
+                _status.IsVisible = surface.Content is null;
+            });
+            Children.Add(Panel);
+        }
         view.TerminalRequested += (_, request) => Dispatcher.UIThread.Post(() => Start(request));
         view.FocusRequested += (_, _) => Dispatcher.UIThread.Post(() => _pane.View.Focus());
         workbench.PropertyChanged += (_, e) =>
@@ -80,9 +91,23 @@ public sealed class ExtensionTerminalView : Panel
     /// <summary>The running session, for tests.</summary>
     internal TerminalSession? Session => _session;
 
-    /// <summary>Called when the tab is shown: the first time, the extension is asked to open its terminal.</summary>
+    /// <summary>For a panel view, what draws the panel (null for a terminal view).</summary>
+    internal ExtensionPanelView? Panel { get; }
+
+    /// <summary>Called when the tab is shown: the first time, the extension is asked to open its terminal (or fill its panel).</summary>
     public void OnShown()
     {
+        if (Panel is not null)
+        {
+            if (!_activated)
+            {
+                _activated = true;
+                _ = _view.ActivateAsync(); // the view's command: the program sends the panel's content
+            }
+
+            return;
+        }
+
         if (_session is not null)
         {
             Dispatcher.UIThread.Post(() => _pane.View.Focus(), DispatcherPriority.Background);
