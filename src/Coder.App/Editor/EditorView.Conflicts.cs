@@ -50,7 +50,7 @@ public sealed partial class EditorView
             last = Math.Min(last, lastLine);
             if (first <= last)
             {
-                context.FillRectangle(brush, new Rect(0, LineTop(first), width, (last - first + 1) * _metrics.LineHeight));
+                context.FillRectangle(brush, new Rect(0, LineTop(first), width, LineTop(last) + _metrics.LineHeight - LineTop(first)));
             }
         }
     }

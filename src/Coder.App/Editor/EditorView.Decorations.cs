@@ -30,7 +30,7 @@ public sealed partial class EditorView
 
     private void DrawDecorations(DrawingContext context, int firstLine, int lastLine)
     {
-        for (var line = firstLine; line <= lastLine; line++)
+        for (var line = firstLine; line <= lastLine; line = NextLine(line))
         {
             if (_decorations(line) is not { } decoration)
             {
@@ -38,7 +38,7 @@ public sealed partial class EditorView
             }
 
             var layout = DecorationLayout(decoration);
-            var x = LineEndX(line) + DecorationGapColumns * _metrics.CharWidth;
+            var x = LineTailX(line) + DecorationGapColumns * _metrics.CharWidth;
             var top = LineTop(line);
             var tint = new SolidColorBrush(DecorationColor(decoration.Kind).Color, 0.12);
             context.FillRectangle(tint, new Rect(x - _metrics.CharWidth / 2, top + 1, layout.WidthIncludingTrailingWhitespace + _metrics.CharWidth, _metrics.LineHeight - 2), 3);
@@ -49,8 +49,8 @@ public sealed partial class EditorView
     /// <summary>Where a line's decoration ends (blame goes after it), or the line's end when it has none.</summary>
     private double DecorationEndX(int line) =>
         _decorations(line) is { } decoration
-            ? LineEndX(line) + (DecorationGapColumns + 1) * _metrics.CharWidth + DecorationLayout(decoration).WidthIncludingTrailingWhitespace
-            : LineEndX(line);
+            ? LineTailX(line) + (DecorationGapColumns + 1) * _metrics.CharWidth + DecorationLayout(decoration).WidthIncludingTrailingWhitespace
+            : LineTailX(line);
 
     private TextLayout DecorationLayout(LineDecoration decoration)
     {

@@ -184,7 +184,7 @@ public sealed partial class EditorView
 
     private void DrawColorSwatches(DrawingContext context, int firstLine, int lastLine)
     {
-        for (var line = firstLine; line <= lastLine; line++)
+        for (var line = firstLine; line <= lastLine; line = NextLine(line))
         {
             if (ColorsOf(line).Insertions.Count == 0)
             {
@@ -256,7 +256,7 @@ public sealed partial class EditorView
             return null;
         }
 
-        var line = (int)((point.Y + _offset.Y) / _metrics.LineHeight);
+        var line = LineAtY(point.Y);
         if (line < 0 || line >= _editor.Document.LineCount)
         {
             return null;

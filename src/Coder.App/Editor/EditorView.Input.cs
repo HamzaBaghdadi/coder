@@ -90,6 +90,12 @@ public sealed partial class EditorView
         var inGutter = point.Position.X < GutterWidth;
         var extend = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
 
+        if (e.KeyModifiers == KeyModifiers.None && TryClickFold(point.Position))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (inGutter && e.ClickCount == 1 && TryClickChangeMarker(point.Position))
         {
             e.Handled = true;
@@ -162,6 +168,7 @@ public sealed partial class EditorView
 
         Cursor = position.X < GutterWidth ? Cursor.Default : SwatchAt(position) is not null ? SwatchCursor : TextCursor;
         _pointer = position;
+        TrackFoldHover(position);
         UpdateCtrlLink(position, e.KeyModifiers);
         TrackHover(position);
 
@@ -291,7 +298,7 @@ public sealed partial class EditorView
     private int OffsetAt(Point point)
     {
         var document = _editor!.Document;
-        var line = Math.Clamp((int)((point.Y + _offset.Y) / _metrics.LineHeight), 0, document.LineCount - 1);
+        var line = LineAtY(point.Y); // rows, so a click lands on the line shown there
         return document.GetLineStart(line) + ColumnAtX(line, point.X);
     }
 

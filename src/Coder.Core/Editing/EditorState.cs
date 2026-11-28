@@ -314,9 +314,24 @@ public sealed partial class EditorState
         SetSelection(extend ? Selection.ExtendTo(target) : Selection.Caret(target));
     }
 
+    /// <summary>
+    /// The line Up (-1) or Down (+1) goes to from a line, when it isn't simply the next one: the view's folded
+    /// blocks are stepped over. Null: line by line.
+    /// </summary>
+    public Func<int, int, int>? LineStep { get; set; }
+
     private Selection MoveByLines(Selection caret, int lineDelta, bool extend, int preferredColumn)
     {
         var targetLine = Document.GetLineOfOffset(caret.Active) + lineDelta;
+        if (LineStep is { } step && lineDelta != 0)
+        {
+            targetLine = Document.GetLineOfOffset(caret.Active);
+            for (var i = 0; i < Math.Abs(lineDelta) && targetLine >= 0 && targetLine < Document.LineCount; i++)
+            {
+                targetLine = step(targetLine, Math.Sign(lineDelta));
+            }
+        }
+
         int target;
         if (targetLine < 0)
         {

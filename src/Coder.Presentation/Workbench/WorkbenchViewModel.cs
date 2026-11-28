@@ -1534,6 +1534,10 @@ public sealed partial class WorkbenchViewModel : ObservableObject, IAsyncDisposa
         Register(CommandIds.ZoomOut, "View", "Zoom Out", "Ctrl+OemMinus", () => EditorFontSize -= 1);
         Register(CommandIds.ZoomReset, "View", "Reset Zoom", "Ctrl+D0", () => EditorFontSize = UserSettings.DefaultEditorFontSize);
         Register(CommandIds.TriggerSuggest, "Editor", "Trigger Suggest", "Ctrl+Space", Completion.Trigger);
+        Register(CommandIds.Fold, "Editor", "Fold", "Ctrl+Shift+OemOpenBrackets", () => Editors.ActiveEditor?.FoldAtCaret());
+        Register(CommandIds.Unfold, "Editor", "Unfold", "Ctrl+Shift+OemCloseBrackets", () => Editors.ActiveEditor?.UnfoldAtCaret());
+        Register(CommandIds.FoldAll, "Editor", "Fold All", "Ctrl+K Ctrl+D0", () => Editors.ActiveEditor?.FoldAll());
+        Register(CommandIds.UnfoldAll, "Editor", "Unfold All", "Ctrl+K Ctrl+J", () => Editors.ActiveEditor?.UnfoldAll());
         Register(CommandIds.TriggerParameterHints, "Editor", "Trigger Parameter Hints", "Ctrl+Shift+Space", SignatureHelp.Trigger);
         Register(CommandIds.GoToDefinition, "Go", "Go to Definition", "F12", GoToDefinitionAsync);
         Register(CommandIds.FindReferences, "Go", "Find All References", "Shift+F12", FindReferencesAsync);

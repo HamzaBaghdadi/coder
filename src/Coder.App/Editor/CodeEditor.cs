@@ -156,6 +156,7 @@ public sealed class CodeEditor : ScrollViewer
         {
             var tab = Tab;
             var offset = tab is not null && _scrollPositions.TryGetValue(tab.Editor, out var box) ? box.Value : default;
+            _view.SetFolding(tab?.Folding, tab is null ? null : tab.FoldRanges, tab is null ? null : tab.ToggleFold); // first: the scroll position is in rows, which depend on the folds
             _view.Attach(tab?.Editor, tab?.Highlighter, offset);
             AttachDiagnostics(tab);
             _view.InlineSuggestionChanged();
@@ -211,6 +212,7 @@ public sealed class CodeEditor : ScrollViewer
         blame.Changed += (_, _) => _view.InvalidateVisual();
         _view.SetBlameSource(line => Tab is { } tab ? blame.Annotation(tab, line) : null);
     }
+
 
     /// <summary>Shows extensions' end-of-line decorations for this file; repaints when its decorations change.</summary>
     public void SetDecorations(Coder.Presentation.Editors.LineDecorations decorations)

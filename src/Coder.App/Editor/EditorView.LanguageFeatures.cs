@@ -65,7 +65,7 @@ public sealed partial class EditorView
             var start = document.GetPosition(Math.Min(marker.Start, document.Length));
             var end = document.GetPosition(Math.Min(marker.End, document.Length));
             var pen = DiagnosticPen(marker.Severity);
-            for (var line = Math.Max(firstLine, start.Line); line <= Math.Min(lastLine, end.Line); line++)
+            for (var line = ShownFrom(Math.Max(firstLine, start.Line)); line <= Math.Min(lastLine, end.Line); line = NextLine(line))
             {
                 var from = line == start.Line ? start.Column : 0;
                 var to = line == end.Line ? end.Column : document.GetLineLength(line);
@@ -138,7 +138,7 @@ public sealed partial class EditorView
 
         var offset = OffsetAt(position);
         var line = _editor.Document.GetLineOfOffset(offset);
-        var pastLineEnd = position.X > LineEndX(line) + _metrics.CharWidth || position.Y + _offset.Y > _editor.Document.LineCount * _metrics.LineHeight;
+        var pastLineEnd = position.X > LineEndX(line) + _metrics.CharWidth || position.Y + _offset.Y > VisibleLineCount * _metrics.LineHeight;
         var word = pastLineEnd ? ((int Start, int End)?)null : _editor.WordRangeAt(offset);
         if (word == _hoverWord)
         {
@@ -177,6 +177,7 @@ public sealed partial class EditorView
         EndHover();
         MinimapPointerExited();
         StickyPointerExited();
+        EndFoldHover();
         _pointer = null;
         UpdateCtrlLink(null, KeyModifiers.None);
     }

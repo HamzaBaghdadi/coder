@@ -82,6 +82,10 @@ public static class CommandIds
     public const string ZoomOut = "view.zoomOut";
     public const string ZoomReset = "view.zoomReset";
     public const string TriggerSuggest = "editor.triggerSuggest";
+    public const string Fold = "editor.fold";
+    public const string Unfold = "editor.unfold";
+    public const string FoldAll = "editor.foldAll";
+    public const string UnfoldAll = "editor.unfoldAll";
     public const string GoToDefinition = "editor.goToDefinition";
     public const string RestartLanguageServers = "languages.restart";
     public const string ShowSourceControl = "view.showSourceControl";
