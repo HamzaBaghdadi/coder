@@ -21,12 +21,21 @@ public sealed record ExtensionListing(
 {
     /// <summary>The package includes a program Coder runs (with the user's consent), not just data.</summary>
     public bool RunsProgram { get; init; }
+
+    /// <summary>Where the extension's README (Markdown) is, when the source says.</summary>
+    public string? ReadmeUrl { get; init; }
 }
 
 /// <summary>A command an extension declares in its manifest (<c>contributes.commands</c>); its program runs it.</summary>
 /// <param name="Category">Shown before the title in the palette ("Claude Code"); the extension's name when the manifest gives none.</param>
 /// <param name="KeyBinding">Gesture text such as "Ctrl+Escape", or null.</param>
 public sealed record ExtensionCommand(string Id, string Category, string Title, string? KeyBinding);
+
+/// <summary>
+/// A view an extension adds to the secondary side bar (<c>coder.views</c>): a tab whose content is a
+/// terminal its program opens there. Showing the tab before that runs <see cref="Command"/>.
+/// </summary>
+public sealed record ExtensionView(string Id, string Title, string? Command);
 
 /// <summary>An extension in Coder's extensions folder.</summary>
 /// <param name="Themes">The color themes it contributes (their labels).</param>
@@ -50,6 +59,9 @@ public sealed record InstalledExtension(string Id, string DisplayName, string Pu
     /// <summary>The commands it adds to the palette (<c>contributes.commands</c>).</summary>
     public IReadOnlyList<ExtensionCommand> Commands { get; init; } = [];
 
+    /// <summary>The views it adds to the secondary side bar (<c>coder.views</c>).</summary>
+    public IReadOnlyList<ExtensionView> Views { get; init; } = [];
+
     /// <summary>The SHA-256 of the package it was installed from, when Coder recorded it; consent to run its program is tied to it.</summary>
     public string? PackageSha256 { get; init; }
 }
@@ -68,6 +80,9 @@ public interface IExtensionSource
     /// <exception cref="ExtensionException">The source can't be reached.</exception>
     async Task<ExtensionListing?> FindAsync(string id, CancellationToken cancellationToken = default) =>
         (await SearchAsync(id, cancellationToken)).FirstOrDefault(l => string.Equals(l.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The listing's README (Markdown), or null when the source has none or it can't be fetched.</summary>
+    Task<string?> GetReadmeAsync(ExtensionListing listing, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 }
 
 /// <summary>Searching, downloading or installing failed; the message says why, for the user.</summary>

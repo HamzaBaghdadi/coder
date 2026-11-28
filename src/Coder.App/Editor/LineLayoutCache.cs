@@ -13,8 +13,9 @@ namespace Coder.App.Editor;
 /// character at display index <see cref="At"/>. <see cref="CaretAfter"/>: a caret at that index sits
 /// after the hint (a parameter name before its argument) rather than before it (a type after a name).
 /// <see cref="IsSuggestion"/>: an AI inline suggestion (gray, no background) rather than an inlay hint.
+/// <see cref="Swatch"/>: blank space a color swatch is drawn over (see EditorView.Colors).
 /// </summary>
-internal readonly record struct LineInsertion(int At, string Label, bool PadLeft, bool PadRight, bool CaretAfter, bool IsSuggestion = false)
+internal readonly record struct LineInsertion(int At, string Label, bool PadLeft, bool PadRight, bool CaretAfter, bool IsSuggestion = false, Color? Swatch = null)
 {
     /// <summary>The label with its padding: the space the hint takes in the line.</summary>
     public string Text => (PadLeft ? " " : string.Empty) + Label + (PadRight ? " " : string.Empty);
@@ -67,6 +68,18 @@ internal sealed class LineLayout(TextLayout layout, int startColumn, IReadOnlyLi
 
         var (layoutStart, layoutEnd) = (ToLayout(start, _ => true), ToLayout(end, _ => false));
         return Layout.HitTestTextRange(layoutStart, layoutEnd - layoutStart).Select(rect => (rect.Left, rect.Right));
+    }
+
+    /// <summary>Each insertion with the horizontal span it takes, relative to the layout origin.</summary>
+    public IEnumerable<(LineInsertion Insertion, double Left, double Right)> InsertionSpans()
+    {
+        var shift = 0;
+        foreach (var insertion in _insertions)
+        {
+            var start = insertion.At - StartColumn + shift;
+            shift += insertion.Text.Length;
+            yield return (insertion, Layout.HitTestTextPosition(start).X, Layout.HitTestTextPosition(start + insertion.Text.Length).X);
+        }
     }
 
     /// <summary>
@@ -214,7 +227,7 @@ internal sealed class LineLayoutCache
                 result.Add(new ValueSpan<TextRunProperties>(start, 1, plain));
             }
 
-            result.Add(new ValueSpan<TextRunProperties>(labelStart, insertion.Label.Length, insertion.IsSuggestion ? suggestionText : hintText));
+            result.Add(new ValueSpan<TextRunProperties>(labelStart, insertion.Label.Length, insertion.Swatch is not null ? plain : insertion.IsSuggestion ? suggestionText : hintText));
             if (insertion.PadRight)
             {
                 result.Add(new ValueSpan<TextRunProperties>(labelStart + insertion.Label.Length, 1, plain));

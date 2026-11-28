@@ -73,7 +73,16 @@ public sealed class OpenVsxSource(HttpClient http, string baseUrl = "https://ope
         e.Files.Download!,
         null,
         e.Files.Sha256,
-        Name);
+        Name)
+    {
+        // Open VSX lists the README among the files; its file endpoint serves README.md otherwise.
+        ReadmeUrl = e.Files.Readme
+            ?? $"{baseUrl.TrimEnd('/')}/api/{Uri.EscapeDataString(e.Namespace!)}/{Uri.EscapeDataString(e.Name!)}/{Uri.EscapeDataString(e.Version ?? "latest")}/file/README.md",
+    };
+
+    /// <summary>The README's Markdown, or null when it can't be fetched.</summary>
+    public Task<string?> GetReadmeAsync(ExtensionListing listing, CancellationToken cancellationToken = default) =>
+        ExtensionReadme.FetchAsync(http, listing.ReadmeUrl, cancellationToken);
 }
 
 /// <summary>
@@ -85,6 +94,10 @@ public sealed class CoderRegistrySource(HttpClient http, string indexUrl) : IExt
     private IReadOnlyList<ExtensionListing>? _all;
 
     public string Name => "Coder";
+
+    /// <summary>The README's Markdown (a web address or a file next to a local index), or null.</summary>
+    public Task<string?> GetReadmeAsync(ExtensionListing listing, CancellationToken cancellationToken = default) =>
+        ExtensionReadme.FetchAsync(http, listing.ReadmeUrl, cancellationToken);
 
     public async Task<IReadOnlyList<ExtensionListing>> SearchAsync(string query, CancellationToken cancellationToken = default)
     {
@@ -135,6 +148,7 @@ public sealed class CoderRegistrySource(HttpClient http, string indexUrl) : IExt
                 Name)
             {
                 RunsProgram = e.Program,
+                ReadmeUrl = e.Readme is { Length: > 0 } readme ? Resolve(readme) : null,
             });
         }
 
@@ -197,6 +211,8 @@ internal sealed class OpenVsxFiles
     public string? Icon { get; set; }
 
     public string? Sha256 { get; set; }
+
+    public string? Readme { get; set; }
 }
 
 /// <summary>Coder's registry index: <c>{ "extensions": [ { "publisher", "name", "version", "download", "sha256", ... } ] }</c>.</summary>
@@ -222,6 +238,9 @@ internal sealed class RegistryEntry
     public string? Sha256 { get; set; }
 
     public string? Icon { get; set; }
+
+    /// <summary>The extension's README (Markdown), an address that may be relative to the index.</summary>
+    public string? Readme { get; set; }
 
     public long Downloads { get; set; }
 

@@ -43,8 +43,6 @@ public sealed class InlineSuggestionsViewModel : ObservableObject, IDisposable
 {
     public static readonly TimeSpan DefaultDelay = TimeSpan.FromMilliseconds(300);
 
-    /// <summary>Text after the caret that still allows a suggestion: closing brackets, quotes and separators.</summary>
-    private const string ClosingCharacters = ")]}>\"'`;,: \t";
 
     /// <summary>Back-off after repeated failures, so a broken provider isn't asked on every keystroke.</summary>
     private static readonly TimeSpan MaxBackOff = TimeSpan.FromSeconds(30);
@@ -71,6 +69,8 @@ public sealed class InlineSuggestionsViewModel : ObservableObject, IDisposable
     private InlineSuggestionStatus _status;
     private string? _error;
     private bool _wasListOpen;
+    private bool _hasProviderKey;
+    private string? _lastOutcome;
 
     public InlineSuggestionsViewModel(EditorGroupViewModel editors, CompletionViewModel completion, Func<InlineSuggestionModel?> resolve, Func<string?> root, InlineCompletionEngine? engine = null)
     {
@@ -151,17 +151,46 @@ public sealed class InlineSuggestionsViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Whether the status bar shows the indicator: suggestions are set up (or were turned off).</summary>
-    public bool IsAvailable => Status != InlineSuggestionStatus.NoModel || !IsEnabled;
+    /// <summary>
+    /// Whether the status bar shows the indicator: suggestions are set up, were turned off, or a provider
+    /// has a key but no model is chosen yet (so the user can see why nothing appears, and click to pick one).
+    /// </summary>
+    public bool IsAvailable => Status != InlineSuggestionStatus.NoModel || !IsEnabled || HasProviderKey;
+
+    /// <summary>Some provider has an API key (set by the workbench): with no model, the indicator asks for one.</summary>
+    public bool HasProviderKey
+    {
+        get => _hasProviderKey;
+        set
+        {
+            if (SetProperty(ref _hasProviderKey, value))
+            {
+                OnPropertyChanged(nameof(IsAvailable));
+            }
+        }
+    }
+
+    /// <summary>What the last request came to, when it showed nothing ("the model had nothing to add here").</summary>
+    public string? LastOutcome
+    {
+        get => _lastOutcome;
+        private set
+        {
+            if (SetProperty(ref _lastOutcome, value))
+            {
+                OnPropertyChanged(nameof(StatusTip));
+            }
+        }
+    }
 
     /// <summary>The status bar indicator's tooltip.</summary>
     public string StatusTip => Status switch
     {
         InlineSuggestionStatus.Off => "Inline suggestions are off. Click to turn them on.",
-        InlineSuggestionStatus.NoModel => "Inline suggestions need a model: add an API key in Coder Agent's providers.",
+        InlineSuggestionStatus.NoModel => "Inline suggestions need a model. Click to pick one (or choose a model for Coder Agent).",
         InlineSuggestionStatus.Loading => $"Getting a suggestion from {ModelLabel}… Click to turn inline suggestions off.",
         InlineSuggestionStatus.Failed => $"Inline suggestion failed: {Error} Click to turn inline suggestions off.",
-        _ => $"Inline suggestions from {ModelLabel}. Tab accepts, Ctrl+Right accepts a word, Esc dismisses. Click to turn them off.",
+        _ => $"Inline suggestions from {ModelLabel}. Tab accepts, Ctrl+Right accepts a word, Esc dismisses.{(LastOutcome is { } outcome ? " " + outcome : string.Empty)} Click to turn them off.",
     };
 
     /// <summary>The model suggestions come from now, for the status bar and settings ("none" when none).</summary>
@@ -355,10 +384,10 @@ public sealed class InlineSuggestionsViewModel : ObservableObject, IDisposable
 
         var caret = editor.Selection.Active;
         var line = document.GetLineOfOffset(caret);
-        var restOfLine = document.GetText(caret, document.GetLineEnd(line) - caret);
-        if (automatic && restOfLine.Any(c => !ClosingCharacters.Contains(c)))
+        var next = caret < document.GetLineEnd(line) ? document.GetText(caret, 1)[0] : '\n';
+        if (automatic && (char.IsLetterOrDigit(next) || next == '_'))
         {
-            return; // in the middle of code: a suggestion would only get in the way
+            return; // inside a word: a suggestion would only get in the way (before "</li>" or ")" is fine)
         }
 
         if (_resolve() is not { } model)
@@ -395,6 +424,7 @@ public sealed class InlineSuggestionsViewModel : ObservableObject, IDisposable
             if (generation == _generation && ReferenceEquals(tab, _tab) && document.Version == version && editor.Selection.Active == caret && editor.Selection.IsEmpty)
             {
                 SetSuggestion(text is null ? null : new InlineSuggestion(caret, text));
+                LastOutcome = text is null ? "Last time, the model had nothing to add there." : null;
             }
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)

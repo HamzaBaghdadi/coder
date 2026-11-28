@@ -110,6 +110,45 @@ public sealed class InlineCompletionTests
     }
 
     [Theory]
+    [InlineData("Apples</li>", "ples")] // the word being typed and the closing tag repeated
+    [InlineData("ples", "ples")]
+    [InlineData("<li>Apples</li>", "ples")]
+    public void Clean_handles_text_between_html_tags(string reply, string expected)
+    {
+        var context = At("<ul>\n  <li>Ap|</li>\n</ul>\n", "index.html", "html");
+
+        Assert.Equal(expected, InlineCompletionText.Clean(reply, context));
+    }
+
+    [Fact]
+    public async Task Engine_reports_a_model_that_only_thinks()
+    {
+        var provider = new ScriptedProvider(_ => [new ReasoningDelta("Let me consider the radius..."), new ChatCompleted("length", null)]);
+
+        var error = await Assert.ThrowsAsync<AiProviderException>(() => new InlineCompletionEngine().CompleteAsync(provider, "deepseek-r1", At("|"), TestContext.Current.CancellationToken));
+
+        Assert.Contains("deepseek-r1 spent its answer thinking", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Engine_reports_reasoning_cut_off_inside_think_tags()
+    {
+        var provider = new ScriptedProvider(_ => [new TextDelta("<think>The user is writing"), new ChatCompleted("length", null)]);
+
+        var error = await Assert.ThrowsAsync<AiProviderException>(() => new InlineCompletionEngine().CompleteAsync(provider, "qwen3", At("|"), TestContext.Current.CancellationToken));
+
+        Assert.Contains("still thinking", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Engine_returns_null_when_a_model_answers_nothing()
+    {
+        var provider = new ScriptedProvider(_ => ScriptedProvider.Text(string.Empty));
+
+        Assert.Null(await new InlineCompletionEngine().CompleteAsync(provider, "m", At("|"), TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
     [InlineData("hello world", 5)]
     [InlineData(" world", 6)]
     [InlineData("(a, b)", 1)]

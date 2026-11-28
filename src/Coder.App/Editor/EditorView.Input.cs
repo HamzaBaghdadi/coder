@@ -96,6 +96,12 @@ public sealed partial class EditorView
             return;
         }
 
+        if (!inGutter && e.KeyModifiers == KeyModifiers.None && TryClickColorSwatch(point.Position))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (!inGutter && TryGoToDefinition(e, offset))
         {
             e.Handled = true;
@@ -154,7 +160,7 @@ public sealed partial class EditorView
             return;
         }
 
-        Cursor = position.X < GutterWidth ? Cursor.Default : TextCursor;
+        Cursor = position.X < GutterWidth ? Cursor.Default : SwatchAt(position) is not null ? SwatchCursor : TextCursor;
         _pointer = position;
         UpdateCtrlLink(position, e.KeyModifiers);
         TrackHover(position);

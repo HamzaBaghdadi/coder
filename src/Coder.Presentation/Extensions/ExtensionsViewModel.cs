@@ -33,6 +33,30 @@ public sealed class ExtensionsViewModel : ObservableObject, IDisposable
         _store.Changed += OnStoreChanged; // Settings Sync installs and uninstalls too
     }
 
+    /// <summary>Asks the workbench to show an extension's page (clicking its row).</summary>
+    public event EventHandler<ExtensionItemViewModel>? DetailsRequested;
+
+    public void ShowDetails(ExtensionItemViewModel item) => DetailsRequested?.Invoke(this, item);
+
+    /// <summary>
+    /// The extension's README: from its installed folder when installed (works offline), otherwise from the
+    /// source that listed it (Open VSX, Coder's registry). Null when neither has one.
+    /// </summary>
+    public async Task<string?> LoadReadmeAsync(ExtensionItemViewModel item)
+    {
+        if (item.Installed is { } installed && await ExtensionReadme.ReadInstalledAsync(installed) is { } local)
+        {
+            return local;
+        }
+
+        if (item.Listing is { } listing && _sources.FirstOrDefault(s => s.Name == listing.Source) is { } source)
+        {
+            return await source.GetReadmeAsync(listing);
+        }
+
+        return null;
+    }
+
     /// <summary>Installed extensions matching the search.</summary>
     public ObservableCollection<ExtensionItemViewModel> Installed { get; } = [];
 
@@ -293,7 +317,11 @@ public sealed class ExtensionItemViewModel : ObservableObject
         Install = new RelayCommand(() => _ = _owner.InstallAsync(this));
         Uninstall = new RelayCommand(() => _ = _owner.UninstallAsync(this));
         SetTheme = new RelayCommand(() => _ = _owner.SetThemeAsync(this));
+        ShowDetails = new RelayCommand(() => _owner.ShowDetails(this));
     }
+
+    /// <summary>Opens the extension's page (details and README) in the editor area.</summary>
+    public System.Windows.Input.ICommand ShowDetails { get; }
 
     public ExtensionListing? Listing { get; }
 

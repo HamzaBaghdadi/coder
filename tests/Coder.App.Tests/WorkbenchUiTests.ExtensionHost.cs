@@ -1,8 +1,10 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Coder.App.Workbench;
 using Coder.Core.Extensions;
 using Coder.Core.Files;
@@ -115,6 +117,67 @@ public sealed partial class WorkbenchUiTests
         }
     }
 
+    /// <summary>
+    /// An extension's view is a tab in the secondary side bar beside Coder Agent. Showing it runs the view's
+    /// command; the program opens its terminal there (with its variables and a message), a second request only
+    /// shows it again, and uninstalling removes the tab.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Extension_views_are_tabs_in_the_secondary_side_bar_with_a_terminal()
+    {
+        var root = Directory.CreateTempSubdirectory("coder-host-view-").FullName;
+        using var http = new HttpClient();
+        try
+        {
+            var store = new ExtensionStore(Path.Combine(root, "installed"), http);
+            InstallProgramExtension(store.Folder);
+            var workbench = new WorkbenchViewModel(new LocalFileSystem(), new NoDialogs(), new MemorySettingsStore(), extensionStore: store);
+            var window = new MainWindow(workbench) { Width = 1280, Height = 800 };
+            workbench.OpenFolder(Directory.CreateDirectory(Path.Combine(root, "work")).FullName);
+            window.Show();
+            var launcher = new FakeLauncher();
+            var host = workbench.EnableExtensionHost(launcher);
+            await host.StartAsync();
+            var program = launcher.Programs.Single();
+            await program.Initialized.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Dispatcher.UIThread.RunJobs();
+
+            // The tab is there; showing it asks the program, which opens its terminal in the view.
+            var view = Assert.Single(workbench.SecondaryViews);
+            Assert.Equal(("helper.view", "Helper View"), (view.Id, view.Title));
+            workbench.IsSecondarySideBarVisible = true;
+            Dispatcher.UIThread.RunJobs();
+            Button(window, "Helper View").Command!.Execute(null);
+            Assert.Equal("helper.view", workbench.ActiveSecondaryView);
+            Assert.Equal("helper.showView", await program.Commands.Reader.ReadAsync(TestContext.Current.CancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            var sideBar = window.GetVisualDescendants().OfType<SecondarySideBar>().Single();
+            await WaitUntil(() => sideBar.ExtensionView("helper.view")?.Session is not null && view.HasTerminal, () => "no terminal in the view");
+            var session = sideBar.ExtensionView("helper.view")!.Session!;
+            string Screen() => string.Concat(Enumerable.Range(0, session.Emulator.Buffer.TotalLines).Select(i => session.Emulator.Buffer.LineAt(i).Text.TrimEnd()));
+            await WaitUntil(() => Regex.Count(Screen(), "helper-view-ok") >= 2, Screen); // the typed command, then its output (lines may wrap)
+            Assert.Contains(window.GetVisualDescendants().OfType<Avalonia.Controls.SelectableTextBlock>(), t => t.Text == "Welcome to Helper" && t.IsEffectivelyVisible); // the message, above the terminal
+            Assert.False(workbench.IsTerminalVisible); // not in the bottom panel
+            Save(window, "extension-side-bar-view");
+
+            // Coder Agent's tab is still first; asking for the view again only shows the running terminal.
+            Button(window, "Coder Agent").Command!.Execute(null);
+            Assert.Null(workbench.ActiveSecondaryView);
+            await workbench.Commands.ExecuteAsync("helper.showView");
+            await WaitUntil(() => workbench.ActiveSecondaryView == "helper.view");
+            Assert.Same(session, sideBar.ExtensionView("helper.view")!.Session);
+
+            // Uninstalled: the tab goes, and the side bar is back on Coder Agent.
+            await store.UninstallAsync("acme.helper");
+            await WaitUntil(() => workbench.SecondaryViews.Count == 0 && sideBar.ExtensionView("helper.view") is null);
+            Assert.Null(workbench.ActiveSecondaryView);
+            window.Close();
+        }
+        finally
+        {
+            DeleteEventually(root);
+        }
+    }
+
     /// <summary>Refused: the program doesn't start, and no one is asked again at start-up; running its command asks again.</summary>
     [AvaloniaFact]
     public async Task A_refused_program_does_not_run_until_allowed()
@@ -186,8 +249,8 @@ public sealed partial class WorkbenchUiTests
         File.WriteAllText(Path.Combine(folder, "bin", "helper.exe"), "the fake launcher never runs this");
         File.WriteAllText(Path.Combine(folder, "package.json"), $$"""
             { "publisher": "acme", "name": "helper", "version": "1.0.0", "displayName": "Acme Helper",
-              "coder": { "program": { "{{Platform.RuntimeId}}": "bin/helper.exe" } },
-              "contributes": { "commands": [ { "command": "helper.hello", "title": "Say Hello", "category": "Helper" } ] } }
+              "coder": { "program": { "{{Platform.RuntimeId}}": "bin/helper.exe" }, "views": [ { "id": "helper.view", "title": "Helper View", "location": "secondarySidebar", "command": "helper.showView" } ] },
+              "contributes": { "commands": [ { "command": "helper.hello", "title": "Say Hello", "category": "Helper" }, { "command": "helper.showView", "title": "Show View", "category": "Helper" } ] } }
             """);
     }
 
@@ -225,7 +288,21 @@ public sealed partial class WorkbenchUiTests
             });
             _connection.OnRequest("commands/execute", p =>
             {
-                Commands.Writer.TryWrite(p.GetProperty("command").GetString()!);
+                var command = p.GetProperty("command").GetString()!;
+                Commands.Writer.TryWrite(command);
+                if (command == "helper.showView")
+                {
+                    // as Claude Code's program does: its own interface, in a terminal in its side-bar tab
+                    _ = Call("terminal/create", new JsonObject
+                    {
+                        ["name"] = "Helper",
+                        ["view"] = "helper.view",
+                        ["command"] = "echo helper-view-ok",
+                        ["message"] = "Welcome to Helper",
+                        ["env"] = new JsonObject { ["HELPER_TOKEN"] = "42" },
+                    });
+                }
+
                 return null;
             });
             _connection.OnRequest("shutdown", _ =>

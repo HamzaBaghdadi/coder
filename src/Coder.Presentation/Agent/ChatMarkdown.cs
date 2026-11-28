@@ -22,6 +22,9 @@ public enum InlineKind
     Code,
     Link,
     Strike,
+
+    /// <summary>An image: <see cref="InlineSpan.Text"/> is its alt text, <see cref="InlineSpan.Url"/> its source.</summary>
+    Image,
 }
 
 /// <summary>A run of text with one style; links keep their address.</summary>
@@ -257,6 +260,13 @@ public static class ChatMarkdown
                 }
             }
 
+            if (c == '!' && i + 1 < text.Length && text[i + 1] == '[' && LinkAt(text, i + 1) is { } image)
+            {
+                Add(InlineKind.Image, image.Text.Length == 0 ? " " : image.Text, StripTitle(image.Url));
+                i = image.End;
+                continue;
+            }
+
             if (c == '[' && LinkAt(text, i) is { } link)
             {
                 Add(InlineKind.Link, link.Text, link.Url);
@@ -301,6 +311,13 @@ public static class ChatMarkdown
 
         Add(InlineKind.Text, string.Empty);
         return spans;
+    }
+
+    /// <summary>"img.png \"Title\"" → "img.png": an address without its optional title or angle brackets.</summary>
+    private static string StripTitle(string url)
+    {
+        var space = url.IndexOf(' ', StringComparison.Ordinal);
+        return (space < 0 ? url : url[..space]).Trim('<', '>');
     }
 
     private static (string Text, string Url, int End)? LinkAt(string text, int start)

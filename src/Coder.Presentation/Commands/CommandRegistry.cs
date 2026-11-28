@@ -128,6 +128,8 @@ public static class CommandIds
     public const string RenameSymbol = "editor.rename";
     public const string QuickFix = "editor.quickFix";
     public const string FormatDocument = "editor.formatDocument";
+    public const string OpenPreview = "editor.openPreview";
+    public const string OpenPreviewSource = "editor.openPreviewSource";
     public const string TriggerParameterHints = "editor.parameterHints";
     public const string OpenSettings = "preferences.openSettings";
     public const string ColorTheme = "preferences.colorTheme";
